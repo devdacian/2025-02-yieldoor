@@ -316,7 +316,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         // must collect fees before checking if a position is liquidatable
         IStrategy(IVault(ctx.pos.vault).strategy()).collectFees();
 
-        require(isLiquidateable(ctx), "isnt liquidateable");
+        require(_isLiquidateable(ctx), "isnt liquidateable");
 
         uint256 currBIndex = ILendingPool(lendingPool).getCurrentBorrowingIndex(ctx.pos.denomination);
         uint256 owedAmount = ctx.pos.borrowedAmount * currBIndex / ctx.pos.borrowedIndex;
@@ -401,7 +401,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
     }
 
     // gas: internal helper function saves reading positions[_id] multiple times during liquidations
-    function isLiquidateable(LiquidateContext memory ctx) public view returns (bool liquidateable) {
+    function _isLiquidateable(LiquidateContext memory ctx) internal view returns (bool liquidateable) {
         VaultParams memory vp = vaultParams[ctx.pos.vault];
 
         uint256 vaultSupply = IVault(ctx.pos.vault).totalSupply();
@@ -433,7 +433,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
     /// @dev In order to be 100% accurate, expects Strategy.collectFees to have been called right before that
     /// @param _id The id of the position
     function isLiquidateable(uint256 _id) public view returns (bool liquidateable) {
-        liquidateable = isLiquidateable(_getLiquidateContext(_id));
+        liquidateable = _isLiquidateable(_getLiquidateContext(_id));
     }
 
     /// @notice Calculates the USD value of amount0 and amount1
