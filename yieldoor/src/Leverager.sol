@@ -126,8 +126,9 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         (uint256 shares, uint256 a0, uint256 a1) =
             IVault(lp.vault).deposit(lp.vault0In, lp.vault1In, lp.min0in, lp.min1in);
 
-        up.initCollateralUsd = _calculateTokenValues(up.token0, up.token1, a0, a1, price); // returns the USD price in 1e18
-        uint256 bPrice = IPriceFeed(pricefeed).getPrice(lp.denomination);
+        IPriceFeed priceFeed = IPriceFeed(pricefeed);
+        up.initCollateralUsd = _calculateTokenValues(up.token0, up.token1, a0, a1, price, priceFeed); // returns the USD price in 1e18
+        uint256 bPrice = priceFeed.getPrice(lp.denomination);
         up.initCollateralValue = up.initCollateralUsd * (10 ** ERC20(lp.denomination).decimals()) / bPrice;
 
         {
@@ -338,7 +339,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         (uint256 amount0, uint256 amount1) =
             IVault(ctx.pos.vault).withdraw(ctx.pos.shares, liqParams.minAmount0, liqParams.minAmount1);
 
-        uint256 totalValueUSD = _calculateTokenValues(ctx.pos.token0, ctx.pos.token1, amount0, amount1, IVault(ctx.pos.vault).twapPrice());
+        uint256 totalValueUSD = _calculateTokenValues(ctx.pos.token0, ctx.pos.token1, amount0, amount1, IVault(ctx.pos.vault).twapPrice(), ctx.priceFeed);
 
         uint256 bPrice = ctx.priceFeed.getPrice(ctx.pos.denomination);
         uint256 borrowedValue = owedAmount * bPrice / ERC20(ctx.pos.denomination).decimals();
@@ -422,7 +423,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         uint256 userBal1 = ctx.pos.shares * vaultBal1 / vaultSupply;
         uint256 price = IVault(ctx.pos.vault).twapPrice();
 
-        uint256 totalValueUSD = _calculateTokenValues(ctx.pos.token0, ctx.pos.token1, userBal0, userBal1, price);
+        uint256 totalValueUSD = _calculateTokenValues(ctx.pos.token0, ctx.pos.token1, userBal0, userBal1, price, ctx.priceFeed);
         uint256 bPrice = ctx.priceFeed.getPrice(ctx.pos.denomination);
         uint256 totalDenom = totalValueUSD * (10 ** ERC20(ctx.pos.denomination).decimals()) / bPrice;
 
@@ -453,7 +454,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
     /// @param amount1 The amount of token1
     /// @param price The TWAP token0/token1 price.
     /// @return usdValue The total token value, denominated in USD, scaled in 1e18.
-    function _calculateTokenValues(address token0, address token1, uint256 amount0, uint256 amount1, uint256 price)
+    function _calculateTokenValues(address token0, address token1, uint256 amount0, uint256 amount1, uint256 price, IPriceFeed _priceFeed)
         internal
         view
         returns (uint256 usdValue)
@@ -462,12 +463,12 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         uint256 chPrice1;
         uint256 decimals0 = 10 ** ERC20(token0).decimals();
         uint256 decimals1 = 10 ** ERC20(token1).decimals();
-        if (IPriceFeed(pricefeed).hasPriceFeed(token0)) {
-            chPrice0 = IPriceFeed(pricefeed).getPrice(token0);
+        if (_priceFeed.hasPriceFeed(token0)) {
+            chPrice0 = _priceFeed.getPrice(token0);
             usdValue += amount0 * chPrice0 / decimals0;
         }
-        if (IPriceFeed(pricefeed).hasPriceFeed(token1)) {
-            chPrice1 = IPriceFeed(pricefeed).getPrice(token1);
+        if (_priceFeed.hasPriceFeed(token1)) {
+            chPrice1 = _priceFeed.getPrice(token1);
             usdValue += amount1 * chPrice1 / decimals1;
         }
 
