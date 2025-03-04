@@ -309,9 +309,12 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
     /// @dev Check the ILeverager contract for comments on all LiquidateParams arguments
     /// @dev Does not support partial liquidations
     /// @dev Collects fees first, in order to properly calculate whether a position is actually liquidateable
-    function liquidatePosition(LiquidateParams calldata liqParams) external collectFees(liqParams.id) nonReentrant {
+    function liquidatePosition(LiquidateParams calldata liqParams) external nonReentrant {
         // read everything required from storage once
         LiquidateContext memory ctx = _getLiquidateContext(liqParams.id);
+
+        // must collect fees before checking if a position is liquidatable
+        IStrategy(IVault(ctx.pos.vault).strategy()).collectFees();
 
         require(isLiquidateable(liqParams.id), "isnt liquidateable");
 
@@ -505,15 +508,6 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
 
         bal = IERC20(token1).balanceOf(address(this));
         if (bal > 0) IERC20(token1).safeTransfer(msg.sender, bal);
-    }
-
-    /// @notice Collects fees within a certain position's strategy.
-    /// @dev Needs to be called before checking if a position is liquidateable
-    modifier collectFees(uint256 _id) {
-        Position memory up = positions[_id];
-        address strat = IVault(up.vault).strategy();
-        IStrategy(strat).collectFees();
-        _;
     }
 
     // --- Owner only functions
