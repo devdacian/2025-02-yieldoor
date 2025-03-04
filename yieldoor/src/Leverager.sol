@@ -297,12 +297,20 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         // read from positions[liqParams.id]
         Position pos;
 
+        // read from vaultParams[pos.vault]
+        uint256 maxTimesLeverage;
+        uint256 minCollateralPct;
+
         address feeRecipient;
         address swapRouter;
     }
 
     function _getLiquidateContext(uint256 _id) internal view returns(LiquidateContext memory ctx) {
         ctx.pos = positions[_id];
+
+        VaultParams storage vpRef = vaultParams[ctx.pos.vault];
+        (ctx.maxTimesLeverage, ctx.minCollateralPct)
+            = (vpRef.maxTimesLeverage, vpRef.minCollateralPct);
     }
 
     /// @notice Liquidates a certain leveraged position.
@@ -316,7 +324,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         // must collect fees before checking if a position is liquidatable
         IStrategy(IVault(ctx.pos.vault).strategy()).collectFees();
 
-        require(_isLiquidateable(ctx), "isnt liquidateable");
+        require(_isLiquidatable(ctx), "isnt liquidateable");
 
         uint256 currBIndex = ILendingPool(lendingPool).getCurrentBorrowingIndex(ctx.pos.denomination);
         uint256 owedAmount = ctx.pos.borrowedAmount * currBIndex / ctx.pos.borrowedIndex;
@@ -401,9 +409,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
     }
 
     // gas: internal helper function saves reading positions[_id] multiple times during liquidations
-    function _isLiquidateable(LiquidateContext memory ctx) internal view returns (bool liquidateable) {
-        VaultParams memory vp = vaultParams[ctx.pos.vault];
-
+    function _isLiquidatable(LiquidateContext memory ctx) internal view returns (bool liquidateable) {
         uint256 vaultSupply = IVault(ctx.pos.vault).totalSupply();
 
         // Assuming a price of X, a LP position has its lowest value when the pool price is exactly X.
@@ -423,17 +429,17 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
 
         /// here we make a calculation what would be the necessary collateral
         /// if we had the same borrowed amount, but at max leverage. Check docs for better explanation why.
-        uint256 base = owedAmount * 1e18 / (vp.maxTimesLeverage - 1e18);
+        uint256 base = owedAmount * 1e18 / (ctx.maxTimesLeverage - 1e18);
         base = base < ctx.pos.initCollateralValue ? base : ctx.pos.initCollateralValue;
 
-        if (owedAmount > totalDenom || totalDenom - owedAmount < vp.minCollateralPct * base / 1e18) return true;
+        if (owedAmount > totalDenom || totalDenom - owedAmount < ctx.minCollateralPct * base / 1e18) return true;
     }
 
     /// @notice Checks whether a certain position is liquidateable
     /// @dev In order to be 100% accurate, expects Strategy.collectFees to have been called right before that
     /// @param _id The id of the position
     function isLiquidateable(uint256 _id) public view returns (bool liquidateable) {
-        liquidateable = _isLiquidateable(_getLiquidateContext(_id));
+        liquidateable = _isLiquidatable(_getLiquidateContext(_id));
     }
 
     /// @notice Calculates the USD value of amount0 and amount1
