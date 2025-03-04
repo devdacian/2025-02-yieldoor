@@ -292,11 +292,19 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         }
     }
 
+    // cache storage reads in memory
+    struct LiquidationContext {
+        address feeRecipient;
+        address swapRouter;
+    }
+
     /// @notice Liquidates a certain leveraged position.
     /// @dev Check the ILeverager contract for comments on all LiquidateParams arguments
     /// @dev Does not support partial liquidations
     /// @dev Collects fees first, in order to properly calculate whether a position is actually liquidateable
     function liquidatePosition(LiquidateParams calldata liqParams) external collectFees(liqParams.id) nonReentrant {
+        LiquidationContext memory ctx;
+
         Position memory up = positions[liqParams.id];
 
         require(isLiquidateable(liqParams.id), "isnt liquidateable");
@@ -305,14 +313,14 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         uint256 owedAmount = up.borrowedAmount * currBIndex / up.borrowedIndex;
         uint256 repayAmount = owedAmount;
 
-        uint256 price = IVault(up.vault).twapPrice();
+        // uint256 price = IVault(up.vault).twapPrice();
         // we do not check here for pool activity, in order to be able to liquidate during very volatile markets
         // otherwise, we'd risk accruing bad debt.
 
         (uint256 amount0, uint256 amount1) =
             IVault(up.vault).withdraw(up.shares, liqParams.minAmount0, liqParams.minAmount1);
 
-        uint256 totalValueUSD = _calculateTokenValues(up.token0, up.token1, amount0, amount1, price);
+        uint256 totalValueUSD = _calculateTokenValues(up.token0, up.token1, amount0, amount1, IVault(up.vault).twapPrice());
 
         uint256 bPrice = IPriceFeed(pricefeed).getPrice(up.denomination);
         uint256 borrowedValue = owedAmount * bPrice / ERC20(up.denomination).decimals();
@@ -325,8 +333,9 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
             uint256 pf0 = protocolFeePct * amount0 / 1e18;
             uint256 pf1 = protocolFeePct * amount1 / 1e18;
 
-            if (pf0 > 0) IERC20(up.token0).safeTransfer(feeRecipient, pf0);
-            if (pf1 > 0) IERC20(up.token1).safeTransfer(feeRecipient, pf1);
+            ctx.feeRecipient = feeRecipient;
+            if (pf0 > 0) IERC20(up.token0).safeTransfer(ctx.feeRecipient, pf0);
+            if (pf1 > 0) IERC20(up.token1).safeTransfer(ctx.feeRecipient, pf1);
             amount0 -= pf0;
             amount1 -= pf1;
         }
@@ -351,8 +360,10 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
             if (swapParams.amountIn > 0) {
                 (address tokenIn,,) = swapParams.path.decodeFirstPool();
                 require(tokenIn == up.token0, "tokenIn should be token0");
-                IERC20(up.token0).forceApprove(swapRouter, swapParams.amountIn);
-                IMainnetRouter(swapRouter).exactInput(swapParams); // does not support sqrtPriceLimit
+
+                ctx.swapRouter = swapRouter;
+                IERC20(up.token0).forceApprove(ctx.swapRouter, swapParams.amountIn);
+                IMainnetRouter(ctx.swapRouter).exactInput(swapParams); // does not support sqrtPriceLimit
                 amount0 -= swapParams.amountIn;
             }
 
@@ -360,8 +371,10 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
             if (swapParams.amountIn > 0) {
                 (address tokenIn,,) = swapParams.path.decodeFirstPool();
                 require(tokenIn == up.token1, "tokenIn should be token0");
-                IERC20(up.token1).forceApprove(swapRouter, swapParams.amountIn);
-                IMainnetRouter(swapRouter).exactInput(swapParams); // does not support sqrtPriceLimit
+
+                if(ctx.swapRouter == address(0)) ctx.swapRouter = swapRouter;
+                IERC20(up.token1).forceApprove(ctx.swapRouter, swapParams.amountIn);
+                IMainnetRouter(ctx.swapRouter).exactInput(swapParams); // does not support sqrtPriceLimit
                 amount1 -= swapParams.amountIn;
             }
         }
