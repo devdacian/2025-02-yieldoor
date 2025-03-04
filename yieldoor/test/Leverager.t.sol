@@ -128,7 +128,7 @@ contract LeveragerTest is BaseTest {
         ILeverager(leverager).openLeveragedPosition(lp);
     }
 
-    function test_LendingPool() external {
+    function test_Gas_LendingPool() external {
         vm.startPrank(lender);
         wbtc.approve(lendingPool, 10e8);
         deal(address(wbtc), lender, 10e8);
@@ -182,7 +182,9 @@ contract LeveragerTest is BaseTest {
         ILeverager.LiquidateParams memory liqParams;
         liqParams.id = 1;
 
+        vm.startSnapshotGas("lendingPoolLiquidation");
         ILeverager(leverager).liquidatePosition(liqParams);
+        vm.stopSnapshotGas();
 
         borrowingRate = ILendingPool(lendingPool).borrowingRateOfReserve(address(wbtc));
         assertEq(borrowingRate, 0);
@@ -561,7 +563,7 @@ contract LeveragerTest is BaseTest {
 
     }
 
-    function test_liquidationWithSwap() public {
+    function test_Gas_liquidationWithSwap() public {
         vm.startPrank(depositor);
         ILeverager.LeverageParams memory lp;
         lp.amount0In = 0.5e8;
@@ -620,7 +622,9 @@ contract LeveragerTest is BaseTest {
 
         assertEq(ILeverager(leverager).isLiquidateable(posId), true);
 
+        vm.startSnapshotGas("liquidateWithSwap");
         ILeverager(leverager).liquidatePosition(liqParams);
+        vm.stopSnapshotGas();
 
         assertApproxEqAbs(wbtc.balanceOf(liquidator), 0.45e8, 1000);
         assertApproxEqAbs(usdc.balanceOf(liquidator), 45_000e6, 100000);
@@ -628,7 +632,7 @@ contract LeveragerTest is BaseTest {
         console.log(weth.balanceOf(liquidator));
     }
 
-    function test_liquidationNoSwap() public {
+    function test_Gas_liquidationNoSwap() public {
         vm.startPrank(depositor);
         ILeverager.LeverageParams memory lp;
         lp.amount0In = 0.5e8;
@@ -668,7 +672,9 @@ contract LeveragerTest is BaseTest {
         deal(address(weth), liquidator, 300e18);
         weth.approve(leverager, type(uint256).max);
 
+        vm.startSnapshotGas("liquidationNoSwap");
         ILeverager(leverager).liquidatePosition(liqParams);
+        vm.stopSnapshotGas();
 
         assertApproxEqAbs(wbtc.balanceOf(liquidator), 1e8, 1000);
         assertApproxEqAbs(usdc.balanceOf(liquidator), 100_000e6, 1e6); // balances should be as much as entire OI
