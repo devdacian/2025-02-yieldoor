@@ -293,9 +293,16 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
     }
 
     // cache storage reads in memory
-    struct LiquidationContext {
+    struct LiquidateContext {
+        // read from positions[liqParams.id]
+        Position pos;
+
         address feeRecipient;
         address swapRouter;
+    }
+
+    function _getLiquidateContext(uint256 _id) internal view returns(LiquidateContext memory ctx) {
+        ctx.pos = positions[_id];
     }
 
     /// @notice Liquidates a certain leveraged position.
@@ -303,27 +310,25 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
     /// @dev Does not support partial liquidations
     /// @dev Collects fees first, in order to properly calculate whether a position is actually liquidateable
     function liquidatePosition(LiquidateParams calldata liqParams) external collectFees(liqParams.id) nonReentrant {
-        LiquidationContext memory ctx;
-
-        Position memory up = positions[liqParams.id];
+        // read everything required from storage once
+        LiquidateContext memory ctx = _getLiquidateContext(liqParams.id);
 
         require(isLiquidateable(liqParams.id), "isnt liquidateable");
 
-        uint256 currBIndex = ILendingPool(lendingPool).getCurrentBorrowingIndex(up.denomination);
-        uint256 owedAmount = up.borrowedAmount * currBIndex / up.borrowedIndex;
+        uint256 currBIndex = ILendingPool(lendingPool).getCurrentBorrowingIndex(ctx.pos.denomination);
+        uint256 owedAmount = ctx.pos.borrowedAmount * currBIndex / ctx.pos.borrowedIndex;
         uint256 repayAmount = owedAmount;
 
-        // uint256 price = IVault(up.vault).twapPrice();
         // we do not check here for pool activity, in order to be able to liquidate during very volatile markets
         // otherwise, we'd risk accruing bad debt.
 
         (uint256 amount0, uint256 amount1) =
-            IVault(up.vault).withdraw(up.shares, liqParams.minAmount0, liqParams.minAmount1);
+            IVault(ctx.pos.vault).withdraw(ctx.pos.shares, liqParams.minAmount0, liqParams.minAmount1);
 
-        uint256 totalValueUSD = _calculateTokenValues(up.token0, up.token1, amount0, amount1, IVault(up.vault).twapPrice());
+        uint256 totalValueUSD = _calculateTokenValues(ctx.pos.token0, ctx.pos.token1, amount0, amount1, IVault(ctx.pos.vault).twapPrice());
 
-        uint256 bPrice = IPriceFeed(pricefeed).getPrice(up.denomination);
-        uint256 borrowedValue = owedAmount * bPrice / ERC20(up.denomination).decimals();
+        uint256 bPrice = IPriceFeed(pricefeed).getPrice(ctx.pos.denomination);
+        uint256 borrowedValue = owedAmount * bPrice / ERC20(ctx.pos.denomination).decimals();
 
         if (totalValueUSD > borrowedValue) {
             // What % of the amountsOut are profit is calculated by `(totalValueUSD - borrowedUSD) / totalValueUSD`
@@ -334,19 +339,19 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
             uint256 pf1 = protocolFeePct * amount1 / 1e18;
 
             ctx.feeRecipient = feeRecipient;
-            if (pf0 > 0) IERC20(up.token0).safeTransfer(ctx.feeRecipient, pf0);
-            if (pf1 > 0) IERC20(up.token1).safeTransfer(ctx.feeRecipient, pf1);
+            if (pf0 > 0) IERC20(ctx.pos.token0).safeTransfer(ctx.feeRecipient, pf0);
+            if (pf1 > 0) IERC20(ctx.pos.token1).safeTransfer(ctx.feeRecipient, pf1);
             amount0 -= pf0;
             amount1 -= pf1;
         }
 
-        if (up.denomination == up.token0) {
+        if (ctx.pos.denomination == ctx.pos.token0) {
             uint256 repayFromWithdraw = amount0 < owedAmount ? amount0 : owedAmount;
             owedAmount -= repayFromWithdraw;
             amount0 -= repayFromWithdraw;
         }
 
-        if (up.denomination == up.token1) {
+        if (ctx.pos.denomination == ctx.pos.token1) {
             uint256 repayFromWithdraw = amount1 < owedAmount ? amount1 : owedAmount;
             owedAmount -= repayFromWithdraw;
             amount1 -= repayFromWithdraw;
@@ -359,10 +364,10 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
                 abi.decode(liqParams.swapParams1, (IMainnetRouter.ExactInputParams));
             if (swapParams.amountIn > 0) {
                 (address tokenIn,,) = swapParams.path.decodeFirstPool();
-                require(tokenIn == up.token0, "tokenIn should be token0");
+                require(tokenIn == ctx.pos.token0, "tokenIn should be token0");
 
                 ctx.swapRouter = swapRouter;
-                IERC20(up.token0).forceApprove(ctx.swapRouter, swapParams.amountIn);
+                IERC20(ctx.pos.token0).forceApprove(ctx.swapRouter, swapParams.amountIn);
                 IMainnetRouter(ctx.swapRouter).exactInput(swapParams); // does not support sqrtPriceLimit
                 amount0 -= swapParams.amountIn;
             }
@@ -370,23 +375,23 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
             swapParams = abi.decode(liqParams.swapParams2, (IMainnetRouter.ExactInputParams));
             if (swapParams.amountIn > 0) {
                 (address tokenIn,,) = swapParams.path.decodeFirstPool();
-                require(tokenIn == up.token1, "tokenIn should be token0");
+                require(tokenIn == ctx.pos.token1, "tokenIn should be token0");
 
                 if(ctx.swapRouter == address(0)) ctx.swapRouter = swapRouter;
-                IERC20(up.token1).forceApprove(ctx.swapRouter, swapParams.amountIn);
+                IERC20(ctx.pos.token1).forceApprove(ctx.swapRouter, swapParams.amountIn);
                 IMainnetRouter(ctx.swapRouter).exactInput(swapParams); // does not support sqrtPriceLimit
                 amount1 -= swapParams.amountIn;
             }
         }
 
-        IERC20(up.denomination).safeTransferFrom(msg.sender, address(this), owedAmount);
+        IERC20(ctx.pos.denomination).safeTransferFrom(msg.sender, address(this), owedAmount);
 
-        ILendingPool(lendingPool).repay(up.denomination, repayAmount);
+        ILendingPool(lendingPool).repay(ctx.pos.denomination, repayAmount);
 
-        if (amount0 > 0) IERC20(up.token0).safeTransfer(msg.sender, amount0);
-        if (amount1 > 0) IERC20(up.token1).safeTransfer(msg.sender, amount1);
+        if (amount0 > 0) IERC20(ctx.pos.token0).safeTransfer(msg.sender, amount0);
+        if (amount1 > 0) IERC20(ctx.pos.token1).safeTransfer(msg.sender, amount1);
 
-        vaultParams[up.vault].currBorrowedUSD -= up.initBorrowedUsd;
+        vaultParams[ctx.pos.vault].currBorrowedUSD -= ctx.pos.initBorrowedUsd;
 
         _burn(liqParams.id);
         delete positions[liqParams.id];
