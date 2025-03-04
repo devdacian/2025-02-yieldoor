@@ -301,12 +301,14 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         uint256 maxTimesLeverage;
         uint256 minCollateralPct;
 
+        IPriceFeed priceFeed;
         address feeRecipient;
         address swapRouter;
     }
 
     function _getLiquidateContext(uint256 _id) internal view returns(LiquidateContext memory ctx) {
         ctx.pos = positions[_id];
+        ctx.priceFeed = IPriceFeed(pricefeed);
 
         VaultParams storage vpRef = vaultParams[ctx.pos.vault];
         (ctx.maxTimesLeverage, ctx.minCollateralPct)
@@ -338,7 +340,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
 
         uint256 totalValueUSD = _calculateTokenValues(ctx.pos.token0, ctx.pos.token1, amount0, amount1, IVault(ctx.pos.vault).twapPrice());
 
-        uint256 bPrice = IPriceFeed(pricefeed).getPrice(ctx.pos.denomination);
+        uint256 bPrice = ctx.priceFeed.getPrice(ctx.pos.denomination);
         uint256 borrowedValue = owedAmount * bPrice / ERC20(ctx.pos.denomination).decimals();
 
         if (totalValueUSD > borrowedValue) {
@@ -421,7 +423,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         uint256 price = IVault(ctx.pos.vault).twapPrice();
 
         uint256 totalValueUSD = _calculateTokenValues(ctx.pos.token0, ctx.pos.token1, userBal0, userBal1, price);
-        uint256 bPrice = IPriceFeed(pricefeed).getPrice(ctx.pos.denomination);
+        uint256 bPrice = ctx.priceFeed.getPrice(ctx.pos.denomination);
         uint256 totalDenom = totalValueUSD * (10 ** ERC20(ctx.pos.denomination).decimals()) / bPrice;
 
         uint256 bIndex = ILendingPool(lendingPool).getCurrentBorrowingIndex(ctx.pos.denomination);
