@@ -316,7 +316,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         // must collect fees before checking if a position is liquidatable
         IStrategy(IVault(ctx.pos.vault).strategy()).collectFees();
 
-        require(isLiquidateable(liqParams.id), "isnt liquidateable");
+        require(isLiquidateable(ctx), "isnt liquidateable");
 
         uint256 currBIndex = ILendingPool(lendingPool).getCurrentBorrowingIndex(ctx.pos.denomination);
         uint256 owedAmount = ctx.pos.borrowedAmount * currBIndex / ctx.pos.borrowedIndex;
@@ -400,37 +400,40 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         delete positions[liqParams.id];
     }
 
-    /// @notice Checks whether a certain position is liquidateable
-    /// @dev In order to be 100% accurate, expects Strategy.collectFees to have been called right before that
-    /// @param _id The id of the position
-    function isLiquidateable(uint256 _id) public view returns (bool liquidateable) {
-        Position memory pos = positions[_id];
-        VaultParams memory vp = vaultParams[pos.vault];
+    // gas: internal helper function saves reading positions[_id] multiple times during liquidations
+    function isLiquidateable(LiquidateContext memory ctx) public view returns (bool liquidateable) {
+        VaultParams memory vp = vaultParams[ctx.pos.vault];
 
-        uint256 vaultSupply = IVault(pos.vault).totalSupply();
+        uint256 vaultSupply = IVault(ctx.pos.vault).totalSupply();
 
         // Assuming a price of X, a LP position has its lowest value when the pool price is exactly X.
         // Any price movement, would actually overvalue the position.
         // For this reason, attackers cannot force a position to become liquidateable with a swap.
-        (uint256 vaultBal0, uint256 vaultBal1) = IVault(pos.vault).balances();
-        uint256 userBal0 = pos.shares * vaultBal0 / vaultSupply;
-        uint256 userBal1 = pos.shares * vaultBal1 / vaultSupply;
-        uint256 price = IVault(pos.vault).twapPrice();
+        (uint256 vaultBal0, uint256 vaultBal1) = IVault(ctx.pos.vault).balances();
+        uint256 userBal0 = ctx.pos.shares * vaultBal0 / vaultSupply;
+        uint256 userBal1 = ctx.pos.shares * vaultBal1 / vaultSupply;
+        uint256 price = IVault(ctx.pos.vault).twapPrice();
 
-        uint256 totalValueUSD = _calculateTokenValues(pos.token0, pos.token1, userBal0, userBal1, price);
-        uint256 bPrice = IPriceFeed(pricefeed).getPrice(pos.denomination);
-        uint256 totalDenom = totalValueUSD * (10 ** ERC20(pos.denomination).decimals()) / bPrice;
+        uint256 totalValueUSD = _calculateTokenValues(ctx.pos.token0, ctx.pos.token1, userBal0, userBal1, price);
+        uint256 bPrice = IPriceFeed(pricefeed).getPrice(ctx.pos.denomination);
+        uint256 totalDenom = totalValueUSD * (10 ** ERC20(ctx.pos.denomination).decimals()) / bPrice;
 
-        uint256 bIndex = ILendingPool(lendingPool).getCurrentBorrowingIndex(pos.denomination);
-        uint256 owedAmount = pos.borrowedAmount * bIndex / pos.borrowedIndex;
+        uint256 bIndex = ILendingPool(lendingPool).getCurrentBorrowingIndex(ctx.pos.denomination);
+        uint256 owedAmount = ctx.pos.borrowedAmount * bIndex / ctx.pos.borrowedIndex;
 
         /// here we make a calculation what would be the necessary collateral
         /// if we had the same borrowed amount, but at max leverage. Check docs for better explanation why.
         uint256 base = owedAmount * 1e18 / (vp.maxTimesLeverage - 1e18);
-        base = base < pos.initCollateralValue ? base : pos.initCollateralValue;
+        base = base < ctx.pos.initCollateralValue ? base : ctx.pos.initCollateralValue;
 
         if (owedAmount > totalDenom || totalDenom - owedAmount < vp.minCollateralPct * base / 1e18) return true;
-        else return false;
+    }
+
+    /// @notice Checks whether a certain position is liquidateable
+    /// @dev In order to be 100% accurate, expects Strategy.collectFees to have been called right before that
+    /// @param _id The id of the position
+    function isLiquidateable(uint256 _id) public view returns (bool liquidateable) {
+        liquidateable = isLiquidateable(_getLiquidateContext(_id));
     }
 
     /// @notice Calculates the USD value of amount0 and amount1
