@@ -479,8 +479,6 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         } else if (chPrice1 == 0) {
             usdValue += amount1 * PRECISION / price * chPrice0 / decimals0;
         }
-
-        return usdValue;
     }
 
     /// @notice Checks that the position is within predefined limits.
