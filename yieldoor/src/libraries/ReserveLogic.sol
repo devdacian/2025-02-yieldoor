@@ -107,13 +107,15 @@ library ReserveLogic {
      *
      */
     function latestBorrowingIndex(DataTypes.ReserveData storage reserve) internal view returns (uint256) {
-        if (reserve.lastUpdateTimestamp == uint128(block.timestamp)) {
+        uint128 lastUpdateTimestampCache = reserve.lastUpdateTimestamp;
+
+        if (lastUpdateTimestampCache == uint128(block.timestamp)) {
             //if the index was updated in the same block, no need to perform any calculation
             return reserve.borrowingIndex;
         }
 
         return reserve.borrowingIndex
-            * (InterestRateUtils.calculateCompoundedInterest(reserve.currentBorrowingRate, reserve.lastUpdateTimestamp))
+            * (InterestRateUtils.calculateCompoundedInterest(reserve.currentBorrowingRate, lastUpdateTimestampCache))
             / (PRECISION);
     }
 
