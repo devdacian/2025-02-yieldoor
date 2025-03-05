@@ -7,6 +7,7 @@ remappings = [
     "@uniswapContracts/=lib/v3-core/contracts/",
     "@uniswapPeriphery/=lib/v3-periphery/contracts/",
     "@solady/=lib/solady/src/",
-    
 ]
+optimizer = true
+optimizer_runs = 1_000_000
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
