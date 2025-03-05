@@ -213,9 +213,10 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
     /// @dev We do not check whether position is liquidateable as we remove collateral and repay debt
     /// in the same ratio as the position currently is.
     function withdraw(WithdrawParams calldata wp) external nonReentrant {
-        Position memory up = positions[wp.id];
         require(_isApprovedOrOwner(msg.sender, wp.id), "msg.sender not approved or owner");
         require(wp.pctWithdraw <= 1e18 && wp.pctWithdraw > 0.01e18, "invalid pctWithdraw");
+
+        Position memory up = positions[wp.id];
 
         address borrowed = up.denomination;
         uint256 sharesToWithdraw = up.shares * wp.pctWithdraw / 1e18;
