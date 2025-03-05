@@ -150,8 +150,6 @@ contract Strategy is Ownable, IStrategy {
 
         amount0Out = m0 + s0 + (bal0 * shares / totalSupply);
         amount1Out = m1 + s1 + (bal1 * shares / totalSupply);
-
-        return (amount0Out, amount1Out);
     }
 
     /// @notice Collects all outstanding position fees
@@ -250,7 +248,7 @@ contract Strategy is Ownable, IStrategy {
     /// @dev Returns the unused amounts of token0 and token1.
     function _addLiquidityToMainPosition(uint160 sqrtPriceX96, uint256 amount0, uint256 amount1)
         internal
-        returns (uint256, uint256)
+        returns (uint256 remaining0, uint256 remaining1)
     {
         int24 tickLower = mainPosition.tickLower;
         int24 tickUpper = mainPosition.tickUpper;
@@ -266,12 +264,10 @@ contract Strategy is Ownable, IStrategy {
 
         (uint256 used0, uint256 used1) =
             IUniswapV3Pool(pool).mint(address(this), tickLower, tickUpper, liquidity, "test");
-        uint256 remaining0 = amount0 - used0;
-        uint256 remaining1 = amount1 - used1;
+        remaining0 = amount0 - used0;
+        remaining1 = amount1 - used1;
 
         mainPosition.liquidity += liquidity;
-
-        return (remaining0, remaining1);
     }
 
     /// @param amount0 Max amount of token0 to add as liquidity to the secondary position
@@ -342,21 +338,19 @@ contract Strategy is Ownable, IStrategy {
     }
 
     /// @notice Returns the TWAP tick
-    function twapTick() public view returns (int24) {
+    function twapTick() public view returns (int24 tick) {
         uint32[] memory secondsAgos = new uint32[](2);
         secondsAgos[0] = twap;
         (int56[] memory tickCumulatives,) = IUniswapV3Pool(pool).observe(secondsAgos);
         int56 tickCumulativesDelta = tickCumulatives[1] - tickCumulatives[0];
 
-        int24 tick = int24(tickCumulativesDelta / int32(twap));
+        tick = int24(tickCumulativesDelta / int32(twap));
         if (tickCumulativesDelta < 0 && (tickCumulativesDelta % int32(twap) != 0)) tick--;
-        return tick;
     }
 
     /// @notice Returns the TWAP price.
     function twapPrice() public view returns (uint256) {
-        int24 tick = twapTick();
-        uint160 sqrtPrice = TickMath.getSqrtRatioAtTick(tick);
+        uint160 sqrtPrice = TickMath.getSqrtRatioAtTick(twapTick());
         return (FullMath.mulDiv(sqrtPrice, 1e15, 2 ** 96) ** 2);
     }
 
@@ -490,7 +484,6 @@ contract Strategy is Ownable, IStrategy {
         if (liquidity != 0) {
             (bal0, bal1) = IUniswapV3Pool(pool).burn(tickLower, tickUpper, liquidity);
             IUniswapV3Pool(pool).collect(address(this), tickLower, tickUpper, type(uint128).max, type(uint128).max);
-            return (bal0, bal1);
         }
     }
 
