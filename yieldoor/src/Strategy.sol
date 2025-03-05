@@ -482,7 +482,7 @@ contract Strategy is Ownable, IStrategy {
 
         vestPosition = vp;
 
-        if (lastValid == vestPosition.endTs) ongoingVestingPosition = false;
+        if (lastValid == vp.endTs) ongoingVestingPosition = false;
     }
 
     /// @notice Removes liquidity from a position and collects all funds
