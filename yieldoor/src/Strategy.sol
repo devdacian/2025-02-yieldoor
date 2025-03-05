@@ -23,13 +23,13 @@ contract Strategy is Ownable, IStrategy {
     event NewSecondaryTicks(int24, int24);
 
     /// @notice Address of the vault utilizing this Strategy
-    address public vault;
+    address immutable public vault;
 
     /// @notice The TWAP interval based on which we get the underlying pool's price
     uint32 public twap;
 
     /// @notice The tickspacing of the underlying pool
-    int24 public tickSpacing;
+    int24 immutable public tickSpacing;
 
     /// @notice The maximum deviation allowed between TWAP price and spot price
     int24 public tickTwapDeviation;
@@ -59,13 +59,13 @@ contract Strategy is Ownable, IStrategy {
     VestingPosition public vestPosition;
 
     /// @notice The address of the first token in the pool
-    address public token0;
+    address immutable public token0;
 
     /// @notice The address of the second token in the pool
-    address public token1;
+    address immutable public token1;
 
     /// @notice the address of the underlying pool
-    address public pool;
+    address immutable public pool;
 
     /// @notice The precision used when calculating the pool's price
     uint256 constant PRECISION = 1e30;
