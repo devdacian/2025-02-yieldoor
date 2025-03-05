@@ -83,9 +83,11 @@ contract Vault is ERC20, Ownable {
         public
         returns (uint256 withdrawAmount0, uint256 withdrawAmount1)
     {
-        IStrategy(strategy).collectFees();
+        IStrategy strategyCache = IStrategy(strategy);
 
-        (uint256 totalBalance0, uint256 totalBalance1) = IStrategy(strategy).balances();
+        strategyCache.collectFees();
+
+        (uint256 totalBalance0, uint256 totalBalance1) = strategyCache.balances();
 
         uint256 totalSupply = totalSupply();
         _burn(msg.sender, shares);
@@ -93,17 +95,17 @@ contract Vault is ERC20, Ownable {
         withdrawAmount0 = totalBalance0 * shares / totalSupply;
         withdrawAmount1 = totalBalance1 * shares / totalSupply;
 
-        (uint256 idle0, uint256 idle1) = IStrategy(strategy).idleBalances();
+        (uint256 idle0, uint256 idle1) = strategyCache.idleBalances();
 
         if (idle0 < withdrawAmount0 || idle1 < withdrawAmount1) {
             // When withdrawing partial, there might be a few wei difference.
-            (withdrawAmount0, withdrawAmount1) = IStrategy(strategy).withdrawPartial(shares, totalSupply);
+            (withdrawAmount0, withdrawAmount1) = strategyCache.withdrawPartial(shares, totalSupply);
         }
 
         require(withdrawAmount0 >= minAmount0 && withdrawAmount1 >= minAmount1, "slippage protection");
 
-        IERC20(token0).safeTransferFrom(strategy, msg.sender, withdrawAmount0);
-        IERC20(token1).safeTransferFrom(strategy, msg.sender, withdrawAmount1);
+        IERC20(token0).safeTransferFrom(address(strategyCache), msg.sender, withdrawAmount0);
+        IERC20(token1).safeTransferFrom(address(strategyCache), msg.sender, withdrawAmount1);
 
         // TODO emit event
     }
