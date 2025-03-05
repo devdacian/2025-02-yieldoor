@@ -161,19 +161,23 @@ contract Strategy is Ownable, IStrategy {
         if (secondaryPosition.liquidity != 0) {
             collectPositionFees(secondaryPosition.tickLower, secondaryPosition.tickUpper);
         }
-        if (ongoingVestingPosition) {
+
+        bool ongoingVestingPositionCache = ongoingVestingPosition;
+        if (ongoingVestingPositionCache) {
             collectPositionFees(vestPosition.tickLower, mainPosition.tickUpper);
         }
 
         (uint256 afterBal0, uint256 afterBal1) = idleBalances();
 
-        uint256 protocolFees0 = (afterBal0 - preBal0) * protocolFee / 10_000;
-        uint256 protocolFees1 = (afterBal1 - preBal1) * protocolFee / 10_000;
+        (uint256 protocolFeeCache, address feeRecipientCache) = (protocolFee, feeRecipient);
 
-        if (protocolFees0 > 0) IERC20(token0).safeTransfer(feeRecipient, protocolFees0);
-        if (protocolFees1 > 0) IERC20(token1).safeTransfer(feeRecipient, protocolFees1);
+        uint256 protocolFees0 = (afterBal0 - preBal0) * protocolFeeCache / 10_000;
+        uint256 protocolFees1 = (afterBal1 - preBal1) * protocolFeeCache / 10_000;
 
-        if (ongoingVestingPosition) {
+        if (protocolFees0 > 0) IERC20(token0).safeTransfer(feeRecipientCache, protocolFees0);
+        if (protocolFees1 > 0) IERC20(token1).safeTransfer(feeRecipientCache, protocolFees1);
+
+        if (ongoingVestingPositionCache) {
             _withdrawPartOfVestingPosition(); // doing that now, otherwise we'd charge protocol fee for the vested position
         }
     }
