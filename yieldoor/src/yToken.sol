@@ -1,37 +1,45 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.24;
 
-import "@openzeppelin/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/token/ERC20/IERC20.sol";
-import "@openzeppelin/token/ERC20/ERC20.sol";
-import "@openzeppelin/utils/ReentrancyGuard.sol";
-
-import "./interfaces/ILendingPool.sol";
+import {ERC20} from "@solady/tokens/ERC20.sol";
+import {SafeTransferLib} from "@solady/utils/SafeTransferLib.sol";
+import {ReentrancyGuardTransient} from "@solady/utils/ReentrancyGuardTransient.sol";
 
 /// @title yToken
 /// Forked from ExtraFinance
-
-contract yToken is ReentrancyGuard, ERC20 {
-    using SafeERC20 for IERC20;
+contract yToken is ReentrancyGuardTransient, ERC20 {
+    using SafeTransferLib for address;
 
     address public immutable lendingPool;
     address public immutable underlyingAsset;
 
     uint8 private immutable _decimals;
+    string private _name;
+    string private _symbol;
 
     modifier onlyLendingPool() {
         require(msg.sender == lendingPool, "unauthorized");
         _;
     }
 
-    constructor(string memory name_, string memory symbol_, uint8 decimals_, address underlyingAsset_)
-        ERC20(name_, symbol_)
-    {
+    constructor(string memory name_, string memory symbol_, uint8 decimals_, address underlyingAsset_) {
         _decimals = decimals_;
+        _name = name_;
+        _symbol = symbol_;
 
         require(underlyingAsset_ != address(0), "underlyingAsset can't be address(0)");
         underlyingAsset = underlyingAsset_;
         lendingPool = msg.sender;
+    }
+
+    /// @dev Returns the name of the token.
+    function name() public view override returns (string memory out) {
+        out = _name;
+    }
+
+    /// @dev Returns the symbol of the token.
+    function symbol() public view override returns (string memory out) {
+        out = _symbol;
     }
 
     /// @notice Mints an amount of yToken to `user`
@@ -51,7 +59,7 @@ contract yToken is ReentrancyGuard, ERC20 {
     {
         _burn(msg.sender, yTokenAmount);
 
-        IERC20(underlyingAsset).safeTransfer(receiverOfUnderlying, underlyingTokenAmount);
+        underlyingAsset.safeTransfer(receiverOfUnderlying, underlyingTokenAmount);
     }
 
     /// @notice Transfers underlying tokens to `target`
@@ -63,7 +71,7 @@ contract yToken is ReentrancyGuard, ERC20 {
         nonReentrant
         returns (uint256)
     {
-        IERC20(underlyingAsset).safeTransfer(target, amount);
+        underlyingAsset.safeTransfer(target, amount);
         return amount;
     }
 

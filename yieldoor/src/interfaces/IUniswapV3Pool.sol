@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.23;
+pragma solidity ^0.8.23;
 
 interface IUniswapV3Pool {
     /// @notice The contract that deployed the pool, which must adhere to the IPancakeV3Factory interface
