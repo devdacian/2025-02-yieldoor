@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import {ERC20} from "@openzeppelin/token/ERC20/ERC20.sol";
-import {IERC20} from "@openzeppelin/token/ERC20/IERC20.sol";
-import {IStrategy} from "./interfaces/IStrategy.sol";
-import {SafeERC20} from "@openzeppelin/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "@openzeppelin/access/Ownable.sol";
+import {ERC20} from "@solady/tokens/ERC20.sol";
+import {SafeTransferLib} from "@solady/utils/SafeTransferLib.sol";
+import {Ownable} from "@solady/auth/Ownable.sol";
+
 import {IVault} from "./interfaces/IVault.sol";
+import {IStrategy} from "./interfaces/IStrategy.sol";
 
 contract Vault is ERC20, Ownable {
-    using SafeERC20 for IERC20;
+    using SafeTransferLib for address;
 
     /// @notice The address of the first token in the Vault
     address immutable public token0;
@@ -30,12 +30,18 @@ contract Vault is ERC20, Ownable {
     /// @notice Sets the tokens used within the vault.
     /// @param _token0 The address of the first token in the Vault
     /// @param _token1 The address of the second token in the Vault
-    constructor(address _token0, address _token1) ERC20("", "") Ownable(msg.sender) {
+    constructor(address _token0, address _token1) {
+        _initializeOwner(msg.sender);
+
         if (_token0 > _token1) (_token0, _token1) = (_token1, _token0);
 
         token0 = _token0;
         token1 = _token1;
     }
+
+    // intentionally empty
+    function name() public view override returns (string memory out) {}
+    function symbol() public view override returns (string memory out) {}
 
     /// @notice Deposits user's funds within the strategy and mints them shares in return
     /// @param amount0 The desired amount of token0 user wants to deposit
@@ -57,8 +63,8 @@ contract Vault is ERC20, Ownable {
 
         (shares, depositAmount0, depositAmount1) = _calcDeposit(totalBalance0, totalBalance1, amount0, amount1);
 
-        IERC20(token0).safeTransferFrom(msg.sender, strategyCache, depositAmount0);
-        IERC20(token1).safeTransferFrom(msg.sender, strategyCache, depositAmount1); // after deposit, funds remain idle, until compound is called
+        token0.safeTransferFrom(msg.sender, strategyCache, depositAmount0);
+        token1.safeTransferFrom(msg.sender, strategyCache, depositAmount1); // after deposit, funds remain idle, until compound is called
 
         uint256 depositFeeCache = depositFee;
         if (depositFeeCache > 0) shares -= (shares * depositFeeCache) / 10_000;
@@ -104,8 +110,8 @@ contract Vault is ERC20, Ownable {
 
         require(withdrawAmount0 >= minAmount0 && withdrawAmount1 >= minAmount1, "slippage protection");
 
-        IERC20(token0).safeTransferFrom(address(strategyCache), msg.sender, withdrawAmount0);
-        IERC20(token1).safeTransferFrom(address(strategyCache), msg.sender, withdrawAmount1);
+        token0.safeTransferFrom(address(strategyCache), msg.sender, withdrawAmount0);
+        token1.safeTransferFrom(address(strategyCache), msg.sender, withdrawAmount1);
 
         // TODO emit event
     }
@@ -159,8 +165,8 @@ contract Vault is ERC20, Ownable {
     function addVestingPosition(uint256 amount0, uint256 amount1, uint256 _duration) external onlyOwner {
         address strategyCache = strategy;
 
-        IERC20(token0).safeTransferFrom(msg.sender, strategyCache, amount0);
-        IERC20(token1).safeTransferFrom(msg.sender, strategyCache, amount1);
+        token0.safeTransferFrom(msg.sender, strategyCache, amount0);
+        token1.safeTransferFrom(msg.sender, strategyCache, amount1);
 
         IStrategy(strategyCache).addVestingPosition(amount0, amount1, _duration); // all necessary checks are performed here.
     }
