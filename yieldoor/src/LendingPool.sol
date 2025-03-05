@@ -265,45 +265,37 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
 
     /// @notice View function to get a Reserve's current borrowing index.
     function getCurrentBorrowingIndex(address asset) public view returns (uint256) {
-        DataTypes.ReserveData storage reserve = reserves[asset];
-
-        return reserve.latestBorrowingIndex();
+        return reserves[asset].latestBorrowingIndex();
     }
 
     /// @notice View function to get an Reserve's yAsset address
     function getYTokenAddress(address asset) public view returns (address) {
-        DataTypes.ReserveData storage reserve = reserves[asset];
-        return reserve.yTokenAddress;
+        return reserves[asset].yTokenAddress;
     }
 
     /// @notice View function which returns the yAsset/asset exchange rate
     function exchangeRateOfReserve(address asset) public view returns (uint256) {
-        DataTypes.ReserveData storage reserve = reserves[asset];
-        return reserve.yTokenToReserveExchangeRate();
+        return reserves[asset].yTokenToReserveExchangeRate();
     }
 
     /// @notice View function which returns the utilization rate of a reserve
     function utilizationRateOfReserve(address asset) public view returns (uint256) {
-        DataTypes.ReserveData storage reserve = reserves[asset];
-        return reserve.utilizationRate();
+        return reserves[asset].utilizationRate();
     }
 
     /// @notice View function which returns the current borrowing rate of a reserve
     function borrowingRateOfReserve(address asset) public view returns (uint256) {
-        DataTypes.ReserveData storage reserve = reserves[asset];
-        return uint256(reserve.borrowingRate());
+        return uint256(reserves[asset].borrowingRate());
     }
 
     /// @notice View function which returns the current total liquidity of a yAsset
     function totalLiquidityOfReserve(address asset) public view returns (uint256 totalLiquidity) {
-        DataTypes.ReserveData storage reserve = reserves[asset];
-        (totalLiquidity,) = reserve.totalLiquidityAndBorrows();
+        (totalLiquidity,) = reserves[asset].totalLiquidityAndBorrows();
     }
 
     /// @notice View Function which returns the current total borrows.
     function totalBorrowsOfReserve(address asset) public view returns (uint256 totalBorrows) {
-        DataTypes.ReserveData storage reserve = reserves[asset];
-        (, totalBorrows) = reserve.totalLiquidityAndBorrows();
+        (, totalBorrows) = reserves[asset].totalLiquidityAndBorrows();
     }
 
     //----------------->>>>>  Set with Admin <<<<<-----------------
@@ -320,26 +312,22 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
 
     /// @notice Freezing a reserve prevents new deposits and borrows, but allows redeems and repayments
     function freezeReserve(address asset) public onlyOwner notPaused {
-        DataTypes.ReserveData storage reserve = reserves[asset];
-        reserve.setFrozen(true);
+        reserves[asset].setFrozen(true);
     }
 
     /// @notice unFreezes a reserve
     function unFreezeReserve(address asset) public onlyOwner notPaused {
-        DataTypes.ReserveData storage reserve = reserves[asset];
-        reserve.setFrozen(false);
+        reserves[asset].setFrozen(false);
     }
 
     /// @notice Enables borrowing a certain asset
     function enableBorrowing(address asset) public onlyOwner notPaused {
-        DataTypes.ReserveData storage reserve = reserves[asset];
-        reserve.setBorrowingEnabled(true);
+        reserves[asset].setBorrowingEnabled(true);
     }
 
     /// @notice Disables borrowing a certain asset
     function disableBorrowing(address asset) public onlyOwner notPaused {
-        DataTypes.ReserveData storage reserve = reserves[asset];
-        reserve.setBorrowingEnabled(false);
+        reserves[asset].setBorrowingEnabled(false);
     }
 
     /// @notice Sets the BorrowingRateConfig for an asset
@@ -351,15 +339,12 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
         uint16 borrowingRateB,
         uint16 maxBorrowingRate
     ) public onlyOwner notPaused {
-        DataTypes.ReserveData storage reserve = reserves[asset];
-        setBorrowingRateConfig(reserve, utilizationA, borrowingRateA, utilizationB, borrowingRateB, maxBorrowingRate);
+        setBorrowingRateConfig(reserves[asset], utilizationA, borrowingRateA, utilizationB, borrowingRateB, maxBorrowingRate);
     }
 
     /// @notice Sets the reserve capacity for an asset
     function setReserveCapacity(address asset, uint256 cap) public onlyOwner notPaused {
-        DataTypes.ReserveData storage reserve = reserves[asset];
-
-        reserve.reserveCapacity = cap;
+        reserves[asset].reserveCapacity = cap;
     }
 
     /// @notice Sets the Leverage params for a reserve
