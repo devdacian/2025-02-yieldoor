@@ -352,8 +352,10 @@ contract Strategy is Ownable, IStrategy {
         (int56[] memory tickCumulatives,) = IUniswapV3Pool(pool).observe(secondsAgos);
         int56 tickCumulativesDelta = tickCumulatives[1] - tickCumulatives[0];
 
-        tick = int24(tickCumulativesDelta / int32(twap));
-        if (tickCumulativesDelta < 0 && (tickCumulativesDelta % int32(twap) != 0)) tick--;
+        int32 signedTwapCache = int32(secondsAgos[0]);
+
+        tick = int24(tickCumulativesDelta / signedTwapCache);
+        if (tickCumulativesDelta < 0 && (tickCumulativesDelta % signedTwapCache != 0)) tick--;
     }
 
     /// @notice Returns the TWAP price.
