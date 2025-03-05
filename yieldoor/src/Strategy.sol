@@ -297,23 +297,25 @@ contract Strategy is Ownable, IStrategy {
     /// @dev Makes sure difference between TWAP and spot price is within acceptable deviation
     /// @dev Makes sure there hasn't been big price swings between consecutive observations
     function _priceWithinRange() internal view returns (bool) {
-        int24 _twapTick = twapTick();
+        uint32 twapCache = twap;
+
+        int24 _twapTickOut = _twapTick(twapCache);
         (, int24 currentTick,,,,,) = IUniswapV3Pool(pool).slot0();
 
         int24 tickTwapDeviationCache = tickTwapDeviation;
 
-        int24 minTick = _twapTick - tickTwapDeviationCache;
-        int24 maxTick = _twapTick + tickTwapDeviationCache;
+        int24 minTick = _twapTickOut - tickTwapDeviationCache;
+        int24 maxTick = _twapTickOut + tickTwapDeviationCache;
         if (currentTick < minTick || currentTick > maxTick) return false;
-        return checkPoolActivity();
+        return _checkPoolActivity(twapCache);
     }
 
-    /// @notice Checks the pool prices in consecutive observations, up to TWAP ago.
-    /// @dev If there aren't enough observations to reach TWAP ago, returns false
-    function checkPoolActivity() public view returns (bool) {
+
+    /// @notice internal function to save reading `twap` multiple times from storage
+    function _checkPoolActivity(uint32 twapCache) internal view returns(bool) {
         (, int24 tick, uint16 currentIndex, uint16 observationCardinality,,,) = IUniswapV3Pool(pool).slot0();
 
-        uint32 lookAgo = uint32(block.timestamp) - twap;
+        uint32 lookAgo = uint32(block.timestamp) - twapCache;
 
         (uint32 nextTimestamp, int56 nextCumulativeTick,,) = IUniswapV3Pool(pool).observations(currentIndex);
 
@@ -346,10 +348,16 @@ contract Strategy is Ownable, IStrategy {
         return false;
     }
 
-    /// @notice Returns the TWAP tick
-    function twapTick() public view returns (int24 tick) {
+    /// @notice Checks the pool prices in consecutive observations, up to TWAP ago.
+    /// @dev If there aren't enough observations to reach TWAP ago, returns false
+    function checkPoolActivity() public view returns (bool) {
+        return _checkPoolActivity(twap);
+    }
+
+    /// @notice internal function to save reading `twap` multiple times from storage
+    function _twapTick(uint32 twapCache) internal view returns(int24 tick) {
         uint32[] memory secondsAgos = new uint32[](2);
-        secondsAgos[0] = twap;
+        secondsAgos[0] = twapCache;
         (int56[] memory tickCumulatives,) = IUniswapV3Pool(pool).observe(secondsAgos);
         int56 tickCumulativesDelta = tickCumulatives[1] - tickCumulatives[0];
 
@@ -359,9 +367,14 @@ contract Strategy is Ownable, IStrategy {
         if (tickCumulativesDelta < 0 && (tickCumulativesDelta % signedTwapCache != 0)) tick--;
     }
 
+    /// @notice Returns the TWAP tick
+    function twapTick() public view returns (int24 tick) {
+        tick = _twapTick(twap);
+    }
+
     /// @notice Returns the TWAP price.
     function twapPrice() public view returns (uint256) {
-        uint160 sqrtPrice = TickMath.getSqrtRatioAtTick(twapTick());
+        uint160 sqrtPrice = TickMath.getSqrtRatioAtTick(_twapTick(twap));
         return (FullMath.mulDiv(sqrtPrice, 1e15, 2 ** 96) ** 2);
     }
 
