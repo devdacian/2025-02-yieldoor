@@ -112,20 +112,21 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
 
         uint256 exchangeRate = reserve.reserveToYTokenExchangeRate();
 
-        IERC20(asset).safeTransferFrom(msg.sender, reserve.yTokenAddress, amount);
+        IyToken yTokenAddress = IyToken(reserve.yTokenAddress);
+        IERC20(asset).safeTransferFrom(msg.sender, address(yTokenAddress), amount);
 
         // Mint yTokens for the user
         yTokenAmount = amount * exchangeRate / (PRECISION);
 
         require(yTokenAmount > MINIMUM_YTOKEN_AMOUNT, "deposit is dust amount");
-        if (IyToken(reserve.yTokenAddress).totalSupply() == 0) {
+        if (yTokenAddress.totalSupply() == 0) {
             // Burn the first 1000 yToken, to defend against lp inflation attacks
-            IyToken(reserve.yTokenAddress).mint(DEAD_ADDRESS, MINIMUM_YTOKEN_AMOUNT);
+            yTokenAddress.mint(DEAD_ADDRESS, MINIMUM_YTOKEN_AMOUNT);
 
             yTokenAmount -= MINIMUM_YTOKEN_AMOUNT;
         }
 
-        IyToken(reserve.yTokenAddress).mint(onBehalfOf, yTokenAmount);
+        yTokenAddress.mint(onBehalfOf, yTokenAmount);
         reserve.underlyingBalance += amount;
         // update the interest rate after the deposit
         reserve.updateInterestRates();
