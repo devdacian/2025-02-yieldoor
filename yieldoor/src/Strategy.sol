@@ -318,6 +318,8 @@ contract Strategy is Ownable, IStrategy {
 
         int24 nextTick = tick;
 
+        int24 maxObservationDeviationCache = maxObservationDeviation;
+
         for (uint16 i = 1; i <= observationCardinality; i++) {
             uint256 index = (observationCardinality + currentIndex - i) % observationCardinality;
             (uint32 timestamp, int56 tickCumulative,,) = IUniswapV3Pool(pool).observations(index);
@@ -330,7 +332,7 @@ contract Strategy is Ownable, IStrategy {
             (nextTimestamp, nextCumulativeTick) = (timestamp, tickCumulative);
             int24 delta = nextTick - tick;
 
-            if (delta > maxObservationDeviation || delta < -maxObservationDeviation) {
+            if (delta > maxObservationDeviationCache || delta < -maxObservationDeviationCache) {
                 return false;
             }
 
