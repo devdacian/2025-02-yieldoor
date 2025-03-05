@@ -88,14 +88,16 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
     {
         DataTypes.ReserveData storage reserve = getReserve(underlyingAsset);
 
+        IyToken yTokenAddress = IyToken(reserve.yTokenAddress);
+
         if (yAssetAmount == type(uint256).max) {
-            yAssetAmount = IyToken(reserve.yTokenAddress).balanceOf(_msgSender());
+            yAssetAmount = yTokenAddress.balanceOf(_msgSender());
         }
         // transfer yTokens to this contract
-        IERC20(reserve.yTokenAddress).safeTransferFrom(msg.sender, address(this), yAssetAmount);
+        IERC20(yTokenAddress).safeTransferFrom(msg.sender, address(this), yAssetAmount);
 
         // calculate underlying tokens using yTokens
-        underlyingTokenAmount = _redeem(underlyingAsset, yAssetAmount, to);
+        underlyingTokenAmount = _redeem(underlyingAsset, yTokenAddress, yAssetAmount, to);
     }
 
     /// @notice Internal function which performs the deposit and updates Reserve's state
@@ -130,7 +132,7 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
     }
 
     /// @notice Internal function which performs the redeem of yAsset into underlying
-    function _redeem(address underlying, uint256 yAssetAmount, address to) internal returns (uint256 underlyingTokenAmount) {
+    function _redeem(address underlying, IyToken yTokenAddress, uint256 yAssetAmount, address to) internal returns (uint256 underlyingTokenAmount) {
         DataTypes.ReserveData storage reserve = getReserve(underlying);
         // update states
         reserve.updateState();
@@ -141,7 +143,7 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
         require(underlyingTokenAmount <= reserve.availableLiquidity(), "not enough available liquidity");
 
         // burn yTokens and transfer the underlying tokens to receiver
-        IyToken(reserve.yTokenAddress).burn(to, yAssetAmount, underlyingTokenAmount);
+        yTokenAddress.burn(to, yAssetAmount, underlyingTokenAmount);
 
         // update the interest rate after the redeem
 
