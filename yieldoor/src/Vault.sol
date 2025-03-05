@@ -12,10 +12,10 @@ contract Vault is ERC20, Ownable {
     using SafeERC20 for IERC20;
 
     /// @notice The address of the first token in the Vault
-    address public token0;
+    address immutable public token0;
 
     /// @notice The address of the second token in the Vault
-    address public token1;
+    address immutable public token1;
 
     /// @notice The strategy used by this Vault
     address public strategy;
