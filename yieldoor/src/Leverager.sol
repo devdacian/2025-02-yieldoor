@@ -562,20 +562,17 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
 
     /// @notice Changes a Vault's max individual borrow
     function changeVaultMaxBorrow(address vault, uint256 maxBorrow) external onlyOwner {
-        VaultParams storage vp = vaultParams[vault];
-        vp.maxUsdLeverage = maxBorrow;
+        vaultParams[vault].maxUsdLeverage = maxBorrow;
     }
 
     /// @notice Changes a Vault's max leverage allowed.
     function changeVaultMaxLeverage(address vault, uint256 maxLeverage) external onlyOwner {
-        VaultParams storage vp = vaultParams[vault];
-        vp.maxTimesLeverage = maxLeverage;
+        vaultParams[vault].maxTimesLeverage = maxLeverage;
     }
 
     /// @notice Changes a vault's minimum collateral percentage
     function changeVaultMinCollateralPct(address vault, uint256 minColateral) external onlyOwner {
-        VaultParams storage vp = vaultParams[vault];
-        vp.minCollateralPct = minColateral;
+        vaultParams[vault].minCollateralPct = minColateral;
     }
 
     /// @notice Enables/ Disables opening leveraged positions within a vault.
