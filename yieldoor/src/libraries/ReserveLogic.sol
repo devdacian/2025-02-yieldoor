@@ -60,8 +60,6 @@ library ReserveLogic {
         if (total > 0) {
             rate = borrows * (PRECISION) / (total);
         }
-
-        return rate;
     }
 
     /**
