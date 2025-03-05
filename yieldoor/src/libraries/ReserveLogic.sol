@@ -43,7 +43,10 @@ library ReserveLogic {
      * @return liquidity
      */
     function borrowedLiquidity(DataTypes.ReserveData storage reserve) internal view returns (uint256 liquidity) {
-        liquidity = latestBorrowingIndex(reserve) * (reserve.totalBorrows) / (reserve.borrowingIndex);
+        uint256 borrowingIndexCache = reserve.borrowingIndex;
+
+        liquidity = _latestBorrowingIndex(reserve.lastUpdateTimestamp, borrowingIndexCache, reserve.currentBorrowingRate)
+                        * (reserve.totalBorrows) / borrowingIndexCache;
     }
 
     /**
