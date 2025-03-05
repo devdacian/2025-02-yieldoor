@@ -67,7 +67,6 @@ contract Vault is ERC20, Ownable {
         if (totalSupply() == 0) _mint(BURN, 1000);
         _mint(msg.sender, shares);
 
-        return (shares, depositAmount0, depositAmount1);
         // TODO - emit event
     }
 
@@ -102,8 +101,6 @@ contract Vault is ERC20, Ownable {
 
         IERC20(token0).safeTransferFrom(strategy, msg.sender, withdrawAmount0);
         IERC20(token1).safeTransferFrom(strategy, msg.sender, withdrawAmount1);
-
-        return (withdrawAmount0, withdrawAmount1);
 
         // TODO emit event
     }
