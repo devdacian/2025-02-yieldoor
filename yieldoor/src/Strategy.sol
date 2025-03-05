@@ -208,11 +208,12 @@ contract Strategy is Ownable, IStrategy {
 
         (uint160 sqrtPriceX96, int24 tick,,,,,) = IUniswapV3Pool(pool).slot0();
 
-        _setMainTicks(tick);
-        (amount0, amount1) = _addLiquidityToMainPosition(sqrtPriceX96, amount0, amount1);
+        (int24 newTickLower, int24 newTickUpper) = _setMainTicks(tick);
+        (amount0, amount1) = _addLiquidityToMainPosition(sqrtPriceX96, amount0, amount1, newTickLower, newTickUpper);
 
-        _setSecondaryPositionsTicks(tick);
-        _addLiquidityToSecondaryPosition(sqrtPriceX96, amount0, amount1);
+        (newTickLower, newTickUpper) = _setSecondaryPositionsTicks(tick);
+        _addLiquidityToSecondaryPosition(sqrtPriceX96, amount0, amount1, newTickLower, newTickUpper);
+
         lastRebalance = block.timestamp;
     }
 
@@ -225,13 +226,13 @@ contract Strategy is Ownable, IStrategy {
         (uint256 bal0, uint256 bal1) = idleBalances();
         (uint160 sqrtPriceX96,,,,,,) = IUniswapV3Pool(pool).slot0();
 
-        (bal0, bal1) = _addLiquidityToMainPosition(sqrtPriceX96, bal0, bal1);
-        _addLiquidityToSecondaryPosition(sqrtPriceX96, bal0, bal1);
+        (bal0, bal1) = _addLiquidityToMainPosition(sqrtPriceX96, bal0, bal1, mainPosition.tickLower, mainPosition.tickUpper);
+        _addLiquidityToSecondaryPosition(sqrtPriceX96, bal0, bal1, secondaryPosition.tickLower, secondaryPosition.tickUpper);
     }
 
     /// @notice Calculates and sets the ticks of the main position
     /// @dev Checks if the nearest initializable tick is lower or higher than the current tick
-    function _setMainTicks(int24 tick) internal {
+    function _setMainTicks(int24 tick) internal returns (int24 newTickLower, int24 newTickUpper) {
         int24 halfWidth = int24(positionWidth / 2);
         int24 modulo = tick % tickSpacing;
         if (modulo < 0) modulo += tickSpacing; // if tick is negative, modulo is also negative
@@ -239,10 +240,14 @@ contract Strategy is Ownable, IStrategy {
 
         int24 tickBorder = tick - modulo;
         if (!isLowerSided) tickBorder += tickSpacing;
-        mainPosition.tickLower = tickBorder - halfWidth;
-        mainPosition.tickUpper = tickBorder + halfWidth;
 
-        emit NewMainTicks(tickBorder - halfWidth, tickBorder + halfWidth);
+        newTickLower = tickBorder - halfWidth;
+        newTickUpper = tickBorder + halfWidth;
+
+        mainPosition.tickLower = newTickLower;
+        mainPosition.tickUpper = newTickUpper;
+
+        emit NewMainTicks(newTickLower, newTickUpper);
     }
 
     /// @param amount0 Max amount of token0 to add as liquidity to the main position
@@ -250,12 +255,10 @@ contract Strategy is Ownable, IStrategy {
     /// @param sqrtPriceX96 The current sqrtPriceX96 of the underlying Uniswap pool
     /// @notice Adds as much liquidity to the main position, as possible (based on amount0 and amount1)
     /// @dev Returns the unused amounts of token0 and token1.
-    function _addLiquidityToMainPosition(uint160 sqrtPriceX96, uint256 amount0, uint256 amount1)
+    function _addLiquidityToMainPosition(uint160 sqrtPriceX96, uint256 amount0, uint256 amount1, int24 tickLower, int24 tickUpper)
         internal
         returns (uint256 remaining0, uint256 remaining1)
     {
-        int24 tickLower = mainPosition.tickLower;
-        int24 tickUpper = mainPosition.tickUpper;
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
             TickMath.getSqrtRatioAtTick(tickLower),
@@ -277,9 +280,7 @@ contract Strategy is Ownable, IStrategy {
     /// @param amount0 Max amount of token0 to add as liquidity to the secondary position
     /// @param amount1 Max amount of token1 to add as liquidity to the secondary position
     /// @param sqrtPriceX96 The current sqrtPriceX96 of the underlying Uniswap pool
-    function _addLiquidityToSecondaryPosition(uint160 sqrtPriceX96, uint256 amount0, uint256 amount1) internal {
-        int24 tickLower = secondaryPosition.tickLower;
-        int24 tickUpper = secondaryPosition.tickUpper;
+    function _addLiquidityToSecondaryPosition(uint160 sqrtPriceX96, uint256 amount0, uint256 amount1, int24 tickLower, int24 tickUpper) internal {
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
             TickMath.getSqrtRatioAtTick(tickLower),
@@ -367,15 +368,13 @@ contract Strategy is Ownable, IStrategy {
     /// @notice Sets the secondary position ticks.
     /// @dev This position should always be created consisting of just one of the tokens
     /// @dev Should initially be Out-Of-Range
-    function _setSecondaryPositionsTicks(int24 tick) internal {
+    function _setSecondaryPositionsTicks(int24 tick) internal returns (int24 newTickLower, int24 newTickUpper) {
         int24 modulo = tick % tickSpacing;
         uint256 bal0 = IERC20(token0).balanceOf(address(this));
         uint256 bal1 = IERC20(token1).balanceOf(address(this));
         uint256 _price = price();
         uint256 bal0in1 = bal0 * _price / PRECISION; // usually either of them should be 0, but might be non-zero due to rounding when minting
 
-        int24 newTickLower;
-        int24 newTickUpper;
         if (bal0in1 < bal1) {
             newTickLower = mainPosition.tickLower;
             newTickUpper = tick - modulo;
