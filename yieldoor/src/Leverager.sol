@@ -199,7 +199,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         // underwater position, which would force governance to liquidate it at a loss.
 
         // don't re-read new position from storage
-        LiquidateContext memory ctx = _getNewLiquidateContext(up);
+        LiquidateContext memory ctx = _getNewLiquidateContext(up, priceFeed);
         require(!_isLiquidatable(ctx), "position can't be liquidateable upon opening");
 
         _mint(msg.sender, _id);
@@ -314,9 +314,9 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         address swapRouter;
     }
 
-    function _getNewLiquidateContext(Position memory p) internal view returns(LiquidateContext memory ctx) {
-        ctx.pos = p;
-        ctx.priceFeed = IPriceFeed(pricefeed);
+    function _getNewLiquidateContext(Position memory newPos, IPriceFeed priceFeed) internal view returns(LiquidateContext memory ctx) {
+        ctx.pos = newPos;
+        ctx.priceFeed = priceFeed;
 
         VaultParams storage vpRef = vaultParams[ctx.pos.vault];
         (ctx.maxTimesLeverage, ctx.minCollateralPct)
