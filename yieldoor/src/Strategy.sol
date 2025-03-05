@@ -529,18 +529,18 @@ contract Strategy is Ownable, IStrategy {
     }
 
     /// @notice View function to get the main position
-    function getMainPosition() external view returns (Position memory) {
-        return mainPosition;
+    function getMainPosition() external view returns (Position memory pos) {
+        pos = mainPosition;
     }
 
     /// @notice View function to get the secondary position
-    function getSecondaryPosition() external view returns (Position memory) {
-        return secondaryPosition;
+    function getSecondaryPosition() external view returns (Position memory pos) {
+        pos = secondaryPosition;
     }
 
     /// @notice View function to get the Vesting position
-    function getVestingPosition() external view returns (VestingPosition memory) {
-        return vestPosition;
+    function getVestingPosition() external view returns (VestingPosition memory pos) {
+        pos = vestPosition;
     }
 
     /// @notice Changes the fee recipient to new address
