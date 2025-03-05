@@ -1,25 +1,26 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import {ERC20} from "@openzeppelin/token/ERC20/ERC20.sol";
-import {ERC721} from "@openzeppelin/token/ERC721/ERC721.sol";
 import {IERC20} from "@openzeppelin/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/token/ERC20/extensions/IERC20Metadata.sol";
+
+import {ERC721} from "@solady/tokens/ERC721.sol";
+import {Ownable} from "@solady/auth/Ownable.sol";
+import {SafeTransferLib} from "@solady/utils/SafeTransferLib.sol";
+import {ReentrancyGuardTransient} from "@solady/utils/ReentrancyGuardTransient.sol";
+
+import {Path} from "./libraries/Path.sol";
 import {IStrategy} from "./interfaces/IStrategy.sol";
-import {SafeERC20} from "@openzeppelin/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "@openzeppelin/access/Ownable.sol";
 import {IVault} from "./interfaces/IVault.sol";
 import {IPriceFeed} from "./interfaces/IPriceFeed.sol";
 import {ILendingPool} from "./interfaces/ILendingPool.sol";
 import {IMainnetRouter} from "./interfaces/IMainnetRouter.sol";
-import {ReentrancyGuard} from "@openzeppelin/utils/ReentrancyGuard.sol";
-import {Path} from "./libraries/Path.sol";
 import {ILeverager} from "./interfaces/ILeverager.sol";
 
 /// @title Leverager
 /// @author deadrosesxyz
-
-contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
-    using SafeERC20 for IERC20;
+contract Leverager is ReentrancyGuardTransient, Ownable, ERC721, ILeverager {
+    using SafeTransferLib for address;
     using Path for bytes;
 
     /// @notice The lending pool from which funds are borrowed/ repaid to
@@ -53,16 +54,32 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
     /// @notice The minimum borrowed amount
     uint256 minBorrow = 20e18;
 
+    string internal _name;
+    string internal _symbol;
+
     /// @notice Sets the name, symbol and lending pool
     /// @param name_ Name of the ERC721
     /// @param symbol_ Symbol of the ERC721
     /// @param _lendingPool The address of the lending pool
-    constructor(string memory name_, string memory symbol_, address _lendingPool)
-        Ownable(msg.sender)
-        ERC721(name_, symbol_)
-    {
+    constructor(string memory name_, string memory symbol_, address _lendingPool) {
+        _initializeOwner(msg.sender);
+
+        _name = name_;
+        _symbol = symbol_;
         lendingPool = _lendingPool;
     }
+
+    /// @dev Returns the name of the token.
+    function name() public view override returns (string memory out) {
+        out = _name;
+    }
+
+    /// @dev Returns the symbol of the token.
+    function symbol() public view override returns (string memory out) {
+        out = _symbol;
+    }
+    /// @dev left intentionally empty
+    function tokenURI(uint256) public view override returns (string memory) {}
 
     /// @notice Owner-only function which enables leveraged positions for a specified vault
     /// @param vault Vault to enable leverage on
@@ -89,10 +106,10 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         address token0 = IVault(vault).token0();
         address token1 = IVault(vault).token1();
 
-        IERC20(token0).forceApprove(vault, type(uint256).max);
-        IERC20(token1).forceApprove(vault, type(uint256).max);
-        IERC20(token0).forceApprove(lendingPool, type(uint256).max);
-        IERC20(token1).forceApprove(lendingPool, type(uint256).max);
+        token0.safeApproveWithRetry(vault, type(uint256).max);
+        token1.safeApproveWithRetry(vault, type(uint256).max);
+        token0.safeApproveWithRetry(lendingPool, type(uint256).max);
+        token1.safeApproveWithRetry(lendingPool, type(uint256).max);
     }
 
     /// @notice Opens up a leveraged position within a certain Vault.
@@ -113,8 +130,8 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         uint256 price = IVault(lp.vault).twapPrice();
         require(IVault(lp.vault).checkPoolActivity(), "market too volatile");
 
-        IERC20(up.token0).safeTransferFrom(msg.sender, address(this), lp.amount0In);
-        IERC20(up.token1).safeTransferFrom(msg.sender, address(this), lp.amount1In);
+        up.token0.safeTransferFrom(msg.sender, address(this), lp.amount0In);
+        up.token1.safeTransferFrom(msg.sender, address(this), lp.amount1In);
 
         uint256 delta0 = lp.vault0In - lp.amount0In;
         uint256 delta1 = lp.vault1In - lp.amount1In;
@@ -129,7 +146,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         IPriceFeed priceFeed = IPriceFeed(pricefeed);
         up.initCollateralUsd = _calculateTokenValues(up.token0, up.token1, a0, a1, price, priceFeed); // returns the USD price in 1e18
         uint256 bPrice = priceFeed.getPrice(lp.denomination);
-        up.initCollateralValue = up.initCollateralUsd * (10 ** ERC20(lp.denomination).decimals()) / bPrice;
+        up.initCollateralValue = up.initCollateralUsd * (10 ** IERC20Metadata(lp.denomination).decimals()) / bPrice;
 
         {
             // we first borrow the maximum amount the user is willing to borrow. Any unused within the swaps is later repaid.
@@ -149,11 +166,11 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
                 require(tokenIn == lp.denomination, "token should be denomination");
 
                 swapRouterCache = swapRouter;
-                IERC20(tokenIn).forceApprove(swapRouterCache, swapParams.amountInMaximum);
+                tokenIn.safeApproveWithRetry(swapRouterCache, swapParams.amountInMaximum);
 
                 swapParams.amountOut = a0 - lp.amount0In;
                 IMainnetRouter(swapRouterCache).exactOutput(swapParams);
-                IERC20(tokenIn).forceApprove(swapRouterCache, 0);
+                tokenIn.safeApproveWithRetry(swapRouterCache, 0);
             }
 
             if (a1 > lp.amount1In && up.token1 != lp.denomination) {
@@ -162,11 +179,11 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
                 require(tokenIn == lp.denomination, "token should be denomination 2 ");
 
                 if(swapRouterCache == address(0)) swapRouterCache = swapRouter;
-                IERC20(tokenIn).forceApprove(swapRouterCache, swapParams.amountInMaximum);
+                tokenIn.safeApproveWithRetry(swapRouterCache, swapParams.amountInMaximum);
 
                 swapParams.amountOut = a1 - lp.amount1In;
                 IMainnetRouter(swapRouterCache).exactOutput(swapParams);
-                IERC20(tokenIn).forceApprove(swapRouterCache, 0);
+                tokenIn.safeApproveWithRetry(swapRouterCache, 0);
             }
         }
 
@@ -180,7 +197,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         // this is ok as 1) its unlikely 2) anyone could sweep them 3) likely MEV bot would sweep them within seconds
         // Although opening positions is time-sensitive, please do not report this as a vulnerability, ty.
         up.borrowedAmount = lp.maxBorrowAmount - denomBalance;
-        up.initBorrowedUsd = up.borrowedAmount * bPrice / (10 ** ERC20(lp.denomination).decimals());
+        up.initBorrowedUsd = up.borrowedAmount * bPrice / (10 ** IERC20Metadata(lp.denomination).decimals());
 
         up.borrowedIndex = ILendingPool(lendingPool).getCurrentBorrowingIndex(lp.denomination);
         up.denomination = lp.denomination;
@@ -252,7 +269,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
                 require(tokenIn == up.token0, "swap input should be token0");
 
                 swapRouterCache = swapRouter;
-                IERC20(up.token0).forceApprove(swapRouterCache, swapParams.amountIn);
+                up.token0.safeApproveWithRetry(swapRouterCache, swapParams.amountIn);
 
                 // might be good here to set amountIn to the lower of swapParams.amountIn and amountOut0
                 IMainnetRouter(swapRouterCache).exactInput(swapParams); // does not support sqrtPriceLimit. Do not use it, or you'd risk funds getting stuck.
@@ -265,19 +282,19 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
                 require(tokenIn == up.token1, "swap input should be token1");
 
                 if(swapRouterCache == address(0)) swapRouterCache = swapRouter;
-                IERC20(up.token1).forceApprove(swapRouterCache, swapParams.amountIn);
+                up.token1.safeApproveWithRetry(swapRouterCache, swapParams.amountIn);
 
                 IMainnetRouter(swapRouterCache).exactInput(swapParams); // does not support sqrtPriceLimit. Do not use it, or you'd risk funds getting stuck.
                 amountOut1 -= swapParams.amountIn;
             }
         }
 
-        if (owedAmount > 0) IERC20(up.denomination).safeTransferFrom(msg.sender, address(this), owedAmount);
+        if (owedAmount > 0) up.denomination.safeTransferFrom(msg.sender, address(this), owedAmount);
 
         ILendingPool(lendingPool).repay(borrowed, amountToRepay);
 
-        if (amountOut0 > 0) IERC20(up.token0).safeTransfer(msg.sender, amountOut0);
-        if (amountOut1 > 0) IERC20(up.token1).safeTransfer(msg.sender, amountOut1);
+        if (amountOut0 > 0) up.token0.safeTransfer(msg.sender, amountOut0);
+        if (amountOut1 > 0) up.token1.safeTransfer(msg.sender, amountOut1);
 
         if (wp.pctWithdraw == 1e18) {
             vaultParams[up.vault].currBorrowedUSD -= up.initBorrowedUsd;
@@ -362,7 +379,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         uint256 totalValueUSD = _calculateTokenValues(ctx.pos.token0, ctx.pos.token1, amount0, amount1, IVault(ctx.pos.vault).twapPrice(), ctx.priceFeed);
 
         uint256 bPrice = ctx.priceFeed.getPrice(ctx.pos.denomination);
-        uint256 borrowedValue = owedAmount * bPrice / ERC20(ctx.pos.denomination).decimals();
+        uint256 borrowedValue = owedAmount * bPrice / IERC20Metadata(ctx.pos.denomination).decimals();
 
         if (totalValueUSD > borrowedValue) {
             // What % of the amountsOut are profit is calculated by `(totalValueUSD - borrowedUSD) / totalValueUSD`
@@ -373,8 +390,8 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
             uint256 pf1 = protocolFeePct * amount1 / 1e18;
 
             ctx.feeRecipient = feeRecipient;
-            if (pf0 > 0) IERC20(ctx.pos.token0).safeTransfer(ctx.feeRecipient, pf0);
-            if (pf1 > 0) IERC20(ctx.pos.token1).safeTransfer(ctx.feeRecipient, pf1);
+            if (pf0 > 0) ctx.pos.token0.safeTransfer(ctx.feeRecipient, pf0);
+            if (pf1 > 0) ctx.pos.token1.safeTransfer(ctx.feeRecipient, pf1);
             amount0 -= pf0;
             amount1 -= pf1;
         }
@@ -401,7 +418,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
                 require(tokenIn == ctx.pos.token0, "tokenIn should be token0");
 
                 ctx.swapRouter = swapRouter;
-                IERC20(ctx.pos.token0).forceApprove(ctx.swapRouter, swapParams.amountIn);
+                ctx.pos.token0.safeApproveWithRetry(ctx.swapRouter, swapParams.amountIn);
                 IMainnetRouter(ctx.swapRouter).exactInput(swapParams); // does not support sqrtPriceLimit
                 amount0 -= swapParams.amountIn;
             }
@@ -412,18 +429,18 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
                 require(tokenIn == ctx.pos.token1, "tokenIn should be token0");
 
                 if(ctx.swapRouter == address(0)) ctx.swapRouter = swapRouter;
-                IERC20(ctx.pos.token1).forceApprove(ctx.swapRouter, swapParams.amountIn);
+                ctx.pos.token1.safeApproveWithRetry(ctx.swapRouter, swapParams.amountIn);
                 IMainnetRouter(ctx.swapRouter).exactInput(swapParams); // does not support sqrtPriceLimit
                 amount1 -= swapParams.amountIn;
             }
         }
 
-        IERC20(ctx.pos.denomination).safeTransferFrom(msg.sender, address(this), owedAmount);
+        ctx.pos.denomination.safeTransferFrom(msg.sender, address(this), owedAmount);
 
         ILendingPool(lendingPool).repay(ctx.pos.denomination, repayAmount);
 
-        if (amount0 > 0) IERC20(ctx.pos.token0).safeTransfer(msg.sender, amount0);
-        if (amount1 > 0) IERC20(ctx.pos.token1).safeTransfer(msg.sender, amount1);
+        if (amount0 > 0) ctx.pos.token0.safeTransfer(msg.sender, amount0);
+        if (amount1 > 0) ctx.pos.token1.safeTransfer(msg.sender, amount1);
 
         vaultParams[ctx.pos.vault].currBorrowedUSD -= ctx.pos.initBorrowedUsd;
 
@@ -445,7 +462,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
 
         uint256 totalValueUSD = _calculateTokenValues(ctx.pos.token0, ctx.pos.token1, userBal0, userBal1, price, ctx.priceFeed);
         uint256 bPrice = ctx.priceFeed.getPrice(ctx.pos.denomination);
-        uint256 totalDenom = totalValueUSD * (10 ** ERC20(ctx.pos.denomination).decimals()) / bPrice;
+        uint256 totalDenom = totalValueUSD * (10 ** IERC20Metadata(ctx.pos.denomination).decimals()) / bPrice;
 
         uint256 bIndex = ILendingPool(lendingPool).getCurrentBorrowingIndex(ctx.pos.denomination);
         uint256 owedAmount = ctx.pos.borrowedAmount * bIndex / ctx.pos.borrowedIndex;
@@ -481,8 +498,8 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
     {
         uint256 chPrice0;
         uint256 chPrice1;
-        uint256 decimals0 = 10 ** ERC20(token0).decimals();
-        uint256 decimals1 = 10 ** ERC20(token1).decimals();
+        uint256 decimals0 = 10 ** IERC20Metadata(token0).decimals();
+        uint256 decimals1 = 10 ** IERC20Metadata(token1).decimals();
         if (_priceFeed.hasPriceFeed(token0)) {
             chPrice0 = _priceFeed.getPrice(token0);
             usdValue += amount0 * chPrice0 / decimals0;
@@ -538,10 +555,10 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
     /// @dev It is CRUCIAL that this function can never be called with one of the tokens being a vault share token.
     function _sweepTokens(address token0, address token1) internal {
         uint256 bal = IERC20(token0).balanceOf(address(this));
-        if (bal > 0) IERC20(token0).safeTransfer(msg.sender, bal);
+        if (bal > 0) token0.safeTransfer(msg.sender, bal);
 
         bal = IERC20(token1).balanceOf(address(this));
-        if (bal > 0) IERC20(token1).safeTransfer(msg.sender, bal);
+        if (bal > 0) token1.safeTransfer(msg.sender, bal);
     }
 
     // --- Owner only functions
@@ -550,7 +567,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
     /// @param asset Asset to be enabled for borrows.
     /// @dev Needs to be called for a token in case no enabled vault has it one of its underlying tokens.
     function enableTokenAsBorrowed(address asset) external onlyOwner {
-        IERC20(asset).forceApprove(lendingPool, type(uint256).max);
+        asset.safeApproveWithRetry(lendingPool, type(uint256).max);
     }
 
     /// @notice Sets the liquidation fee
@@ -598,12 +615,6 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
     }
 
     // view functions
-
-    /// @notice checks if a spender is approved or owner
-    function _isApprovedOrOwner(address spender, uint256 tokenId) internal view virtual returns (bool) {
-        address owner = ERC721.ownerOf(tokenId);
-        return (spender == owner || isApprovedForAll(owner, spender) || getApproved(tokenId) == spender);
-    }
 
     /// @notice Gets the tokenIn in a exactOutput swap path
     function _getTokenIn(bytes memory path) internal pure returns (address tokenIn) {
