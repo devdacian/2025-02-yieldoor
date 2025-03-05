@@ -244,15 +244,18 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         if (wp.hasToSwap) {
             // ideally, these swaps should have the user as a recipient. Then, we'll just pull the necessary part from them.
 
+            address swapRouterCache;
             IMainnetRouter.ExactInputParams memory swapParams =
                 abi.decode(wp.swapParams1, (IMainnetRouter.ExactInputParams));
             if (swapParams.amountIn > 0) {
                 (address tokenIn,,) = swapParams.path.decodeFirstPool();
                 require(tokenIn == up.token0, "swap input should be token0");
-                IERC20(up.token0).forceApprove(swapRouter, swapParams.amountIn);
+
+                swapRouterCache = swapRouter;
+                IERC20(up.token0).forceApprove(swapRouterCache, swapParams.amountIn);
 
                 // might be good here to set amountIn to the lower of swapParams.amountIn and amountOut0
-                IMainnetRouter(swapRouter).exactInput(swapParams); // does not support sqrtPriceLimit. Do not use it, or you'd risk funds getting stuck.
+                IMainnetRouter(swapRouterCache).exactInput(swapParams); // does not support sqrtPriceLimit. Do not use it, or you'd risk funds getting stuck.
                 amountOut0 -= swapParams.amountIn;
             }
 
@@ -260,9 +263,11 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
             if (swapParams.amountIn > 0) {
                 (address tokenIn,,) = swapParams.path.decodeFirstPool();
                 require(tokenIn == up.token1, "swap input should be token1");
-                IERC20(up.token1).forceApprove(swapRouter, swapParams.amountIn);
 
-                IMainnetRouter(swapRouter).exactInput(swapParams); // does not support sqrtPriceLimit. Do not use it, or you'd risk funds getting stuck.
+                if(swapRouterCache == address(0)) swapRouterCache = swapRouter;
+                IERC20(up.token1).forceApprove(swapRouterCache, swapParams.amountIn);
+
+                IMainnetRouter(swapRouterCache).exactInput(swapParams); // does not support sqrtPriceLimit. Do not use it, or you'd risk funds getting stuck.
                 amountOut1 -= swapParams.amountIn;
             }
         }
