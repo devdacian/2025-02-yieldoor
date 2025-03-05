@@ -204,8 +204,6 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
 
         _mint(msg.sender, _id);
         _sweepTokens(up.token0, up.token1);
-
-        return _id;
     }
 
     /// @notice Withdraws a certain percentage of a user's leveraged position.
