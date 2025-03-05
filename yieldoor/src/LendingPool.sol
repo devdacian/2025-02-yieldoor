@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import {ERC20} from "@openzeppelin/token/ERC20/ERC20.sol";
-import {IERC20} from "@openzeppelin/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "@openzeppelin/access/Ownable.sol";
-import {ILendingPool} from "./interfaces/ILendingPool.sol";
+import {IERC20Metadata} from "@openzeppelin/token/ERC20/extensions/IERC20Metadata.sol";
+
+import {Ownable} from "@solady/auth/Ownable.sol";
+import {SafeTransferLib} from "@solady/utils/SafeTransferLib.sol";
+import {ReentrancyGuardTransient} from "@solady/utils/ReentrancyGuardTransient.sol";
+
 import {ReserveLogic} from "./libraries/ReserveLogic.sol";
 import {DataTypes} from "./types/DataTypes.sol";
-import {ReentrancyGuard} from "@openzeppelin/utils/ReentrancyGuard.sol";
-import {IyToken} from "./interfaces/IyToken.sol";
 import {yToken} from "./yToken.sol";
+import {IyToken} from "./interfaces/IyToken.sol";
+import {ILendingPool} from "./interfaces/ILendingPool.sol";
 
 /// @title LendingPool
 /// Forked and adjusted from Extra Finances
-
-contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
-    using SafeERC20 for IERC20;
+contract LendingPool is ILendingPool, Ownable, ReentrancyGuardTransient {
+    using SafeTransferLib for address;
     using ReserveLogic for DataTypes.ReserveData;
 
     /// @notice The amount of tokens which is transferred to the burn address, upon first deposit in a reserve.
@@ -43,16 +43,18 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
         _;
     }
 
-    constructor() Ownable(msg.sender) {}
+    constructor() {
+        _initializeOwner(msg.sender);
+    }
 
     /// @notice initialize a reserve pool for an asset
     function initReserve(address asset) external onlyOwner notPaused {
         require(reserves[asset].lastUpdateTimestamp == 0, "asset already initialized");
 
         // new a yToken contract
-        string memory name = string(abi.encodePacked(ERC20(asset).name(), "Yieldoor yAsset"));
-        string memory symbol = string(abi.encodePacked("y", ERC20(asset).symbol()));
-        uint8 decimals = ERC20(asset).decimals();
+        string memory name = string(abi.encodePacked(IERC20Metadata(asset).name(), "Yieldoor yAsset"));
+        string memory symbol = string(abi.encodePacked("y", IERC20Metadata(asset).symbol()));
+        uint8 decimals = IERC20Metadata(asset).decimals();
 
         address _yToken = address(new yToken(name, symbol, decimals, asset));
 
@@ -91,10 +93,10 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
         IyToken yTokenAddress = IyToken(reserve.yTokenAddress);
 
         if (yAssetAmount == type(uint256).max) {
-            yAssetAmount = yTokenAddress.balanceOf(_msgSender());
+            yAssetAmount = yTokenAddress.balanceOf(msg.sender);
         }
         // transfer yTokens to this contract
-        IERC20(yTokenAddress).safeTransferFrom(msg.sender, address(this), yAssetAmount);
+        address(yTokenAddress).safeTransferFrom(msg.sender, address(this), yAssetAmount);
 
         // calculate underlying tokens using yTokens
         underlyingTokenAmount = _redeem(underlyingAsset, yTokenAddress, yAssetAmount, to);
@@ -113,7 +115,7 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
         uint256 exchangeRate = reserve.reserveToYTokenExchangeRate();
 
         IyToken yTokenAddress = IyToken(reserve.yTokenAddress);
-        IERC20(asset).safeTransferFrom(msg.sender, address(yTokenAddress), amount);
+        asset.safeTransferFrom(msg.sender, address(yTokenAddress), amount);
 
         // Mint yTokens for the user
         yTokenAmount = amount * exchangeRate / (PRECISION);
@@ -171,8 +173,8 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
         reserve.totalBorrows += amount;
         reserve.underlyingBalance -= amount;
 
-        // The receiver of the underlying tokens must be the farming contract (_msgSender())
-        IyToken(reserve.yTokenAddress).transferUnderlyingTo(_msgSender(), amount);
+        // The receiver of the underlying tokens must be the farming contract
+        IyToken(reserve.yTokenAddress).transferUnderlyingTo(msg.sender, amount);
 
         reserve.updateInterestRates();
     }
@@ -197,7 +199,7 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
         reserve.underlyingBalance += amount;
 
         // Transfer the underlying tokens from the vaultPosition to the yToken contract
-        IERC20(asset).safeTransferFrom(_msgSender(), reserve.yTokenAddress, amount);
+        asset.safeTransferFrom(msg.sender, reserve.yTokenAddress, amount);
 
         reserve.updateInterestRates();
 
@@ -209,14 +211,14 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
     function pullFunds(address asset, uint256 amount) external nonReentrant {
         require(msg.sender == leverager, "borrower not leverager");
 
-        IyToken(getReserve(asset).yTokenAddress).transferUnderlyingTo(_msgSender(), amount);
+        IyToken(getReserve(asset).yTokenAddress).transferUnderlyingTo(msg.sender, amount);
     }
 
     /// @notice Allows leverager to push back funds to yAsset
     function pushFunds(address asset, uint256 amount) external nonReentrant {
         require(msg.sender == leverager, "borrower not leverager");
 
-        IERC20(asset).safeTransferFrom(msg.sender, getReserve(asset).yTokenAddress, amount);
+        asset.safeTransferFrom(msg.sender, getReserve(asset).yTokenAddress, amount);
     }
 
     /// @notice Internal function which initializes a reserve
