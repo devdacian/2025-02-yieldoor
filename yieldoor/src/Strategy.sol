@@ -374,15 +374,20 @@ contract Strategy is Ownable, IStrategy {
         uint256 _price = price();
         uint256 bal0in1 = bal0 * _price / PRECISION; // usually either of them should be 0, but might be non-zero due to rounding when minting
 
+        int24 newTickLower;
+        int24 newTickUpper;
         if (bal0in1 < bal1) {
-            secondaryPosition.tickLower = mainPosition.tickLower;
-            secondaryPosition.tickUpper = tick - modulo;
+            newTickLower = mainPosition.tickLower;
+            newTickUpper = tick - modulo;
         } else {
-            secondaryPosition.tickLower = tick - modulo + tickSpacing;
-            secondaryPosition.tickUpper = mainPosition.tickUpper; // TODO check if these need to be reversed.
+            newTickLower = tick - modulo + tickSpacing;
+            newTickUpper = mainPosition.tickUpper; // TODO check if these need to be reversed.
         }
 
-        emit NewSecondaryTicks(secondaryPosition.tickLower, secondaryPosition.tickUpper);
+        secondaryPosition.tickLower = newTickLower;
+        secondaryPosition.tickUpper = newTickUpper;
+
+        emit NewSecondaryTicks(newTickLower, newTickUpper);
     }
 
     /// @notice Removes all liquidity from both the Main Position and the Secondary position
