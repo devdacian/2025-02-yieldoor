@@ -208,17 +208,15 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
     /// @dev Should always push the same amount of tokens back, at the end of the transaction
     function pullFunds(address asset, uint256 amount) external nonReentrant {
         require(msg.sender == leverager, "borrower not leverager");
-        DataTypes.ReserveData memory reserve = getReserve(asset);
 
-        IyToken(reserve.yTokenAddress).transferUnderlyingTo(_msgSender(), amount);
+        IyToken(getReserve(asset).yTokenAddress).transferUnderlyingTo(_msgSender(), amount);
     }
 
     /// @notice Allows leverager to push back funds to yAsset
     function pushFunds(address asset, uint256 amount) external nonReentrant {
         require(msg.sender == leverager, "borrower not leverager");
-        DataTypes.ReserveData memory reserve = getReserve(asset);
 
-        IERC20(asset).safeTransferFrom(msg.sender, reserve.yTokenAddress, amount);
+        IERC20(asset).safeTransferFrom(msg.sender, getReserve(asset).yTokenAddress, amount);
     }
 
     /// @notice Internal function which initializes a reserve
