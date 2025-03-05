@@ -84,7 +84,7 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
         public
         notPaused
         nonReentrant
-        returns (uint256)
+        returns (uint256 underlyingTokenAmount)
     {
         DataTypes.ReserveData storage reserve = getReserve(underlyingAsset);
 
@@ -95,9 +95,7 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
         IERC20(reserve.yTokenAddress).safeTransferFrom(msg.sender, address(this), yAssetAmount);
 
         // calculate underlying tokens using yTokens
-        uint256 underlyingTokenAmount = _redeem(underlyingAsset, yAssetAmount, to);
-
-        return (underlyingTokenAmount);
+        underlyingTokenAmount = _redeem(underlyingAsset, yAssetAmount, to);
     }
 
     /// @notice Internal function which performs the deposit and updates Reserve's state
@@ -132,13 +130,13 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
     }
 
     /// @notice Internal function which performs the redeem of yAsset into underlying
-    function _redeem(address underlying, uint256 yAssetAmount, address to) internal returns (uint256) {
+    function _redeem(address underlying, uint256 yAssetAmount, address to) internal returns (uint256 underlyingTokenAmount) {
         DataTypes.ReserveData storage reserve = getReserve(underlying);
         // update states
         reserve.updateState();
 
         // calculate underlying tokens using yTokens
-        uint256 underlyingTokenAmount = reserve.yTokenToReserveExchangeRate() * yAssetAmount / PRECISION;
+        underlyingTokenAmount = reserve.yTokenToReserveExchangeRate() * yAssetAmount / PRECISION;
 
         require(underlyingTokenAmount <= reserve.availableLiquidity(), "not enough available liquidity");
 
@@ -149,8 +147,6 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
 
         reserve.underlyingBalance -= underlyingTokenAmount;
         reserve.updateInterestRates();
-
-        return (underlyingTokenAmount);
     }
 
     /// @notice Allows a whitelisted borrower to borrow funds
