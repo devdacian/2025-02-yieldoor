@@ -364,9 +364,9 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
         leverager = _leverager;
     }
 
-    /// @notice View function which returns the Leverage Params for an asset.
+    /// @notice View function which returns the Leverage Params for an asset
     function getLeverageParams(address asset) public view returns (uint256, uint256) {
-        DataTypes.ReserveData memory reserve = getReserve(asset);
+        DataTypes.ReserveData storage reserve = getReserve(asset);
         return (reserve.leverageParams.maxIndividualBorrow, reserve.leverageParams.maxLeverage);
     }
 }
