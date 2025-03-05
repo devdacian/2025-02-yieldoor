@@ -49,16 +49,19 @@ contract Vault is ERC20, Ownable {
         external
         returns (uint256 shares, uint256 depositAmount0, uint256 depositAmount1)
     {
-        IStrategy(strategy).collectFees();
+        address strategyCache = strategy;
 
-        (uint256 totalBalance0, uint256 totalBalance1) = IStrategy(strategy).balances();
+        IStrategy(strategyCache).collectFees();
+
+        (uint256 totalBalance0, uint256 totalBalance1) = IStrategy(strategyCache).balances();
 
         (shares, depositAmount0, depositAmount1) = _calcDeposit(totalBalance0, totalBalance1, amount0, amount1);
 
-        IERC20(token0).safeTransferFrom(msg.sender, strategy, depositAmount0);
-        IERC20(token1).safeTransferFrom(msg.sender, strategy, depositAmount1); // after deposit, funds remain idle, until compound is called
+        IERC20(token0).safeTransferFrom(msg.sender, strategyCache, depositAmount0);
+        IERC20(token1).safeTransferFrom(msg.sender, strategyCache, depositAmount1); // after deposit, funds remain idle, until compound is called
 
-        if (depositFee > 0) shares -= (shares * depositFee) / 10_000;
+        uint256 depositFeeCache = depositFee;
+        if (depositFeeCache > 0) shares -= (shares * depositFeeCache) / 10_000;
 
         require(shares > 0, "shares cant be 0");
         require(depositAmount0 >= amount0Min, "slippage0");
