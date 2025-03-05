@@ -32,7 +32,7 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
     address public leverager;
 
     /// @notice Pause mechanism
-    bool public paused = false;
+    bool public paused;
 
     /// @notice Precision when dealing with ReserveData
     uint256 constant PRECISION = 1e27;
