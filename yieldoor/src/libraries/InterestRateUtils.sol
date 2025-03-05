@@ -19,28 +19,36 @@ library InterestRateUtils {
     function calculateBorrowingRate(DataTypes.InterestRateConfig storage config, uint256 utilizationRate)
         internal
         view
-        returns (uint256 borrowingRate)
+        returns (uint256)
     {
-        if (utilizationRate <= config.utilizationA) {
-            if (config.utilizationA == 0) {
+        uint256 utilizationACache = config.utilizationA;
+        if (utilizationRate <= utilizationACache) {
+            if (utilizationACache == 0) {
                 return config.borrowingRateA;
             }
-            borrowingRate = utilizationRate * config.borrowingRateA / config.utilizationA;
-        } else if (utilizationRate <= config.utilizationB) {
-            if (config.utilizationB == config.utilizationA) {
+
+            return utilizationRate * config.borrowingRateA / utilizationACache;
+        }
+        
+        uint256 utilizationBCache = config.utilizationB;
+        if (utilizationRate <= utilizationBCache) {
+            if (utilizationBCache == utilizationACache) {
                 return config.borrowingRateB;
             }
-            borrowingRate = (uint256(config.borrowingRateB) - config.borrowingRateA)
-                * (utilizationRate - config.utilizationA) // (rateB - rateA) * (uR - uA) / (uB - uA) + bA
-                / (config.utilizationB - config.utilizationA) + config.borrowingRateA;
-        } else {
-            if (config.utilizationB >= PRECISION) {
-                return config.maxBorrowingRate;
-            }
-            borrowingRate = (uint256(config.maxBorrowingRate) - config.borrowingRateB)
-                * (utilizationRate - config.utilizationB) / (PRECISION - config.utilizationB) + config.borrowingRateB;
+
+            uint256 borrowingRateACache = config.borrowingRateA;
+
+            return (uint256(config.borrowingRateB) - borrowingRateACache)
+                * (utilizationRate - utilizationACache) // (rateB - rateA) * (uR - uA) / (uB - uA) + bA
+                / (utilizationBCache - utilizationACache) + borrowingRateACache;
         }
-        return borrowingRate;
+
+        if (utilizationBCache >= PRECISION) return config.maxBorrowingRate;
+
+        uint256 borrowingRateBCache = config.borrowingRateB;
+
+        return (uint256(config.maxBorrowingRate) - borrowingRateBCache)
+            * (utilizationRate - utilizationBCache) / (PRECISION - utilizationBCache) + borrowingRateBCache;
     }
 
     /**
