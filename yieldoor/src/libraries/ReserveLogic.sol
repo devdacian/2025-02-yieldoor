@@ -100,6 +100,20 @@ library ReserveLogic {
         return totalLiquidity * (PRECISION) / (totalYTokens);
     }
 
+    // internal helper to save re-reading identical values from storage
+    function _latestBorrowingIndex(
+        uint128 lastUpdateTimestamp, uint256 borrowingIndex, uint256 currentBorrowingRate)
+    internal view returns (uint256) {
+        if (lastUpdateTimestamp == uint128(block.timestamp)) {
+            //if the index was updated in the same block, no need to perform any calculation
+            return borrowingIndex;
+        }
+
+        return borrowingIndex
+            * (InterestRateUtils.calculateCompoundedInterest(currentBorrowingRate, lastUpdateTimestamp))
+            / (PRECISION);
+    }
+
     /**
      * @dev Returns the borrowing index for the reserve
      * @param reserve The reserve object
@@ -107,16 +121,7 @@ library ReserveLogic {
      *
      */
     function latestBorrowingIndex(DataTypes.ReserveData storage reserve) internal view returns (uint256) {
-        uint128 lastUpdateTimestampCache = reserve.lastUpdateTimestamp;
-
-        if (lastUpdateTimestampCache == uint128(block.timestamp)) {
-            //if the index was updated in the same block, no need to perform any calculation
-            return reserve.borrowingIndex;
-        }
-
-        return reserve.borrowingIndex
-            * (InterestRateUtils.calculateCompoundedInterest(reserve.currentBorrowingRate, lastUpdateTimestampCache))
-            / (PRECISION);
+        return _latestBorrowingIndex(reserve.lastUpdateTimestamp, reserve.borrowingIndex, reserve.currentBorrowingRate);
     }
 
     function checkCapacity(DataTypes.ReserveData storage reserve, uint256 depositAmount) internal view {
@@ -150,17 +155,22 @@ library ReserveLogic {
      *
      */
     function _updateIndexes(DataTypes.ReserveData storage reserve) internal {
-        uint256 newBorrowingIndex = reserve.borrowingIndex;
-        uint256 newTotalBorrows = reserve.totalBorrows;
+        // only load from storage as needed
+        uint256 oldTotalBorrows = reserve.totalBorrows;
+        if (oldTotalBorrows > 0) {
+            // load here as used in next function call and later inside the `if` statement
+            uint256 oldBorrowingIndex = reserve.borrowingIndex;
 
-        if (reserve.totalBorrows > 0) {
-            newBorrowingIndex = latestBorrowingIndex(reserve);
-            newTotalBorrows = newBorrowingIndex * (reserve.totalBorrows) / (reserve.borrowingIndex);
+            uint256 newBorrowingIndex = _latestBorrowingIndex(reserve.lastUpdateTimestamp,
+                                                              oldBorrowingIndex,
+                                                              reserve.currentBorrowingRate);
+            uint256 newTotalBorrows = newBorrowingIndex * oldTotalBorrows / oldBorrowingIndex;
 
             require(newBorrowingIndex <= type(uint128).max);
 
-            reserve.borrowingIndex = newBorrowingIndex;
-            reserve.totalBorrows = newTotalBorrows;
+            // only write to storage if values changed
+            if(oldBorrowingIndex != newBorrowingIndex) reserve.borrowingIndex = newBorrowingIndex;
+            if(oldTotalBorrows != newTotalBorrows) reserve.totalBorrows = newTotalBorrows;
         }
         reserve.lastUpdateTimestamp = uint128(block.timestamp);
     }
