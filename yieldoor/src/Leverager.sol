@@ -190,9 +190,6 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         vaultParams[lp.vault].currBorrowedUSD += up.initBorrowedUsd;
         _checkWithinlimits(up);
 
-        _id = id++;
-        positions[_id] = up;
-
         // here we check whether the position is liquidateable, as for positions with over 2x leverage
         // user could swap the all of the denom tokens for pretty much nothing in return
         // (sandwiching the tx himself). This way they'd steal the borrowed tokens and create
@@ -201,6 +198,9 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         // don't re-read new position from storage
         LiquidateContext memory ctx = _getNewLiquidateContext(up, priceFeed);
         require(!_isLiquidatable(ctx), "position can't be liquidateable upon opening");
+
+        _id = id++;
+        positions[_id] = up;
 
         _mint(msg.sender, _id);
         _sweepTokens(up.token0, up.token1);
