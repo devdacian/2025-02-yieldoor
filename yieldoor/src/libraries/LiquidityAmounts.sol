@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "./FullMath.sol";
+import {FixedPointMathLib} from "@solady/utils/FixedPointMathLib.sol";
 
 /// @title FixedPoint96
 /// @notice A library for handling binary fixed point numbers, see https://en.wikipedia.org/wiki/Q_(number_format)
@@ -32,8 +32,8 @@ library LiquidityAmounts {
         if (sqrtRatioAX96 > sqrtRatioBX96) {
             (sqrtRatioAX96, sqrtRatioBX96) = (sqrtRatioBX96, sqrtRatioAX96);
         }
-        uint256 intermediate = FullMath.mulDiv(sqrtRatioAX96, sqrtRatioBX96, FixedPoint96.Q96);
-        return toUint128(FullMath.mulDiv(amount0, intermediate, sqrtRatioBX96 - sqrtRatioAX96));
+        uint256 intermediate = FixedPointMathLib.fullMulDiv(sqrtRatioAX96, sqrtRatioBX96, FixedPoint96.Q96);
+        return toUint128(FixedPointMathLib.fullMulDiv(amount0, intermediate, sqrtRatioBX96 - sqrtRatioAX96));
     }
 
     /// @notice Computes the amount of liquidity received for a given amount of token1 and price range
@@ -50,7 +50,7 @@ library LiquidityAmounts {
         if (sqrtRatioAX96 > sqrtRatioBX96) {
             (sqrtRatioAX96, sqrtRatioBX96) = (sqrtRatioBX96, sqrtRatioAX96);
         }
-        return toUint128(FullMath.mulDiv(amount1, FixedPoint96.Q96, sqrtRatioBX96 - sqrtRatioAX96));
+        return toUint128(FixedPointMathLib.fullMulDiv(amount1, FixedPoint96.Q96, sqrtRatioBX96 - sqrtRatioAX96));
     }
 
     /// @notice Computes the maximum amount of liquidity received for a given amount of token0, token1, the current
@@ -92,7 +92,7 @@ library LiquidityAmounts {
             (sqrtRatioAX96, sqrtRatioBX96) = (sqrtRatioBX96, sqrtRatioAX96);
         }
 
-        return FullMath.mulDiv(
+        return FixedPointMathLib.fullMulDiv(
             uint256(liquidity) << FixedPoint96.RESOLUTION, sqrtRatioBX96 - sqrtRatioAX96, sqrtRatioBX96
         ) / sqrtRatioAX96;
     }
@@ -111,7 +111,7 @@ library LiquidityAmounts {
             (sqrtRatioAX96, sqrtRatioBX96) = (sqrtRatioBX96, sqrtRatioAX96);
         }
 
-        return FullMath.mulDiv(liquidity, sqrtRatioBX96 - sqrtRatioAX96, FixedPoint96.Q96);
+        return FixedPointMathLib.fullMulDiv(liquidity, sqrtRatioBX96 - sqrtRatioAX96, FixedPoint96.Q96);
     }
 
     /// @notice Computes the token0 and token1 value for a given amount of liquidity, the current
