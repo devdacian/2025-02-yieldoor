@@ -1,22 +1,21 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import {ERC20} from "@openzeppelin/token/ERC20/ERC20.sol";
+import {SafeTransferLib} from "@solady/utils/SafeTransferLib.sol";
+import {Ownable} from "@solady/auth/Ownable.sol";
+import {FixedPointMathLib} from "@solady/utils/FixedPointMathLib.sol";
 import {IERC20} from "@openzeppelin/token/ERC20/IERC20.sol";
+
 import {IStrategy} from "./interfaces/IStrategy.sol";
 import {IVault} from "./interfaces/IVault.sol";
 import {IUniswapV3Pool} from "./interfaces/IUniswapV3Pool.sol";
-import {FullMath} from "./libraries/FullMath.sol";
 import {TickMath} from "./libraries/TickMath.sol";
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
-import {SafeERC20} from "@openzeppelin/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "@openzeppelin/access/Ownable.sol";
 
 /// @title Strategy
 /// @author @deadrosesxyz
-
 contract Strategy is Ownable, IStrategy {
-    using SafeERC20 for IERC20;
+    using SafeTransferLib for address;
     using TickMath for int24;
 
     event NewMainTicks(int24, int24);
@@ -88,13 +87,15 @@ contract Strategy is Ownable, IStrategy {
      * @param _rebalancer The rebalancer which will perform rebalancing and compounds
      * @param _feeRecipient The address which will receive protocol fees
      */
-    constructor(address uniPool, address _vault, address _rebalancer, address _feeRecipient) Ownable(msg.sender) {
+    constructor(address uniPool, address _vault, address _rebalancer, address _feeRecipient) {
+        _initializeOwner(msg.sender);
+
         token0 = IUniswapV3Pool(uniPool).token0();
         token1 = IUniswapV3Pool(uniPool).token1();
         pool = uniPool;
         vault = _vault;
-        IERC20(token0).forceApprove(_vault, type(uint256).max);
-        IERC20(token1).forceApprove(_vault, type(uint256).max);
+        token0.safeApproveWithRetry(_vault, type(uint256).max);
+        token1.safeApproveWithRetry(_vault, type(uint256).max);
         rebalancer = _rebalancer;
         tickSpacing = IUniswapV3Pool(pool).tickSpacing();
         twap = 300; // 5 minutes
@@ -125,7 +126,7 @@ contract Strategy is Ownable, IStrategy {
     /// @notice Returns the token0/token1 spot price in 1e30 precision
     function price() public view returns (uint256 _price) {
         (uint160 sqrtPriceX96,,,,,,) = IUniswapV3Pool(pool).slot0();
-        _price = FullMath.mulDiv(sqrtPriceX96, 1e15, 2 ** 96) ** 2;
+        _price = FixedPointMathLib.fullMulDiv(sqrtPriceX96, 1e15, 2 ** 96) ** 2;
     }
 
     /// @notice Withdraws a user's portion of the assets
@@ -172,8 +173,8 @@ contract Strategy is Ownable, IStrategy {
         uint256 protocolFees0 = (afterBal0 - preBal0) * protocolFeeCache / 10_000;
         uint256 protocolFees1 = (afterBal1 - preBal1) * protocolFeeCache / 10_000;
 
-        if (protocolFees0 > 0) IERC20(token0).safeTransfer(feeRecipientCache, protocolFees0);
-        if (protocolFees1 > 0) IERC20(token1).safeTransfer(feeRecipientCache, protocolFees1);
+        if (protocolFees0 > 0) token0.safeTransfer(feeRecipientCache, protocolFees0);
+        if (protocolFees1 > 0) token1.safeTransfer(feeRecipientCache, protocolFees1);
 
         if (ongoingVestingPositionCache) {
             _withdrawPartOfVestingPosition(); // doing that now, otherwise we'd charge protocol fee for the vested position
@@ -398,7 +399,7 @@ contract Strategy is Ownable, IStrategy {
     /// @notice Returns the TWAP price.
     function twapPrice() public view returns (uint256) {
         uint160 sqrtPrice = TickMath.getSqrtRatioAtTick(_twapTick(twap));
-        return (FullMath.mulDiv(sqrtPrice, 1e15, 2 ** 96) ** 2);
+        return (FixedPointMathLib.fullMulDiv(sqrtPrice, 1e15, 2 ** 96) ** 2);
     }
 
     /// @notice Sets the secondary position ticks.
@@ -449,8 +450,8 @@ contract Strategy is Ownable, IStrategy {
     function uniswapV3MintCallback(uint256 amount0, uint256 amount1, bytes memory) external {
         require(msg.sender == pool, "only callable by pool");
 
-        if (amount0 > 0) IERC20(token0).safeTransfer(pool, amount0);
-        if (amount1 > 0) IERC20(token1).safeTransfer(pool, amount1);
+        if (amount0 > 0) token0.safeTransfer(pool, amount0);
+        if (amount1 > 0) token1.safeTransfer(pool, amount1);
     }
 
     /// @notice Creates a new position which is vested over time to the Vault depositors
