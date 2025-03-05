@@ -157,10 +157,12 @@ contract Vault is ERC20, Ownable {
     /// @param amount1 The amount of token1 to be added as liquidity to the vesitng positon
     /// @param _duration The duration over which the position should be vested
     function addVestingPosition(uint256 amount0, uint256 amount1, uint256 _duration) external onlyOwner {
-        IERC20(token0).safeTransferFrom(msg.sender, strategy, amount0);
-        IERC20(token1).safeTransferFrom(msg.sender, strategy, amount1);
+        address strategyCache = strategy;
 
-        IStrategy(strategy).addVestingPosition(amount0, amount1, _duration); // all necessary checks are performed here.
+        IERC20(token0).safeTransferFrom(msg.sender, strategyCache, amount0);
+        IERC20(token1).safeTransferFrom(msg.sender, strategyCache, amount1);
+
+        IStrategy(strategyCache).addVestingPosition(amount0, amount1, _duration); // all necessary checks are performed here.
     }
 
     /// @notice Returns the balances of the strategy
