@@ -17,7 +17,7 @@ interface ILendingPool {
     function getCurrentBorrowingIndex(address asset) external view returns (uint256);
     function pullFunds(address asset, uint256 amount) external;
     function pushFunds(address asset, uint256 amount) external;
-    function getLeverageParams(address asset) external returns (uint256, uint256);
+    function getLeverageParams(address asset) external view returns (uint256, uint256);
     function initReserve(address asset) external;
     function deposit(address asset, uint256 amount, address onBehalfOf) external returns (uint256);
     function redeem(address underlyingAsset, uint256 yAssetAmount, address to) external returns (uint256);

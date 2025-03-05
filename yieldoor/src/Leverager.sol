@@ -507,21 +507,25 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
     /// 2) Be within Vault's max USD borrow/ max leverage
     /// 3) Be within Asset's max borrow/ max leverage
     /// 4) Not result in Vault exceeding its max cumulative USD borrows.
-    function _checkWithinlimits(Position memory up) internal {
-        VaultParams memory vp = vaultParams[up.vault];
+    function _checkWithinlimits(Position memory up) internal view {
+        VaultParams storage vpRef = vaultParams[up.vault];
+
+        // read only required VaultParams together at the same time
+        (uint256 maxTimesLeverage, uint256 maxUsdLeverage, uint256 currBorrowedUSD, uint256 maxCumulativeBorrowedUSD) =
+            (vpRef.maxTimesLeverage, vpRef.maxUsdLeverage, vpRef.currBorrowedUSD, vpRef.maxCumulativeBorrowedUSD);
+
+        // fail fast before any other storage reads or external calls
+        require(currBorrowedUSD <= maxCumulativeBorrowedUSD, "vault exceeded borrow limit");
+        require(up.initBorrowedUsd <= maxUsdLeverage, "too high borrow usd amount");
+
         (uint256 maxIndividualBorrow, uint256 maxLevTimes) =
             ILendingPool(lendingPool).getLeverageParams(up.denomination);
+        require(up.borrowedAmount <= maxIndividualBorrow, "too high borrow for the vault");
 
         uint256 positionLeverage = (up.initCollateralValue + up.borrowedAmount) * 1e18 / up.initCollateralValue;
+        require(positionLeverage <= maxTimesLeverage && positionLeverage <= maxLevTimes, "too high x leverage");
 
         require(up.initBorrowedUsd >= minBorrow, "position must be at least minBorrow amount");
-        require(positionLeverage <= vp.maxTimesLeverage && positionLeverage <= maxLevTimes, "too high x leverage");
-        require(up.initBorrowedUsd <= vp.maxUsdLeverage, "too high borrow usd amount");
-        require(up.borrowedAmount <= maxIndividualBorrow, "too high borrow for the vault");
-        require(
-            vaultParams[up.vault].currBorrowedUSD <= vaultParams[up.vault].maxCumulativeBorrowedUSD,
-            "vault exceeded borrow limit"
-        );
     }
 
     /// @notice Sweeps any leftover tokens and sends them to msg.sender
