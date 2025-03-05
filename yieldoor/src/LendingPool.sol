@@ -188,8 +188,9 @@ contract LendingPool is ILendingPool, Ownable, ReentrancyGuard {
         // update states
         reserve.updateState();
 
-        if (amount > reserve.totalBorrows) {
-            amount = reserve.totalBorrows;
+        uint256 totalBorrowsCache = reserve.totalBorrows;
+        if (amount > totalBorrowsCache) {
+            amount = totalBorrowsCache;
         }
 
         reserve.totalBorrows -= amount;
