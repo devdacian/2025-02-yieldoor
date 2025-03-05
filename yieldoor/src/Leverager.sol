@@ -197,7 +197,10 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         // user could swap the all of the denom tokens for pretty much nothing in return
         // (sandwiching the tx himself). This way they'd steal the borrowed tokens and create
         // underwater position, which would force governance to liquidate it at a loss.
-        require(!isLiquidateable(_id), "position can't be liquidateable upon opening");
+
+        // don't re-read new position from storage
+        LiquidateContext memory ctx = _getNewLiquidateContext(up);
+        require(!_isLiquidatable(ctx), "position can't be liquidateable upon opening");
 
         _mint(msg.sender, _id);
         _sweepTokens(up.token0, up.token1);
@@ -309,6 +312,15 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
         IPriceFeed priceFeed;
         address feeRecipient;
         address swapRouter;
+    }
+
+    function _getNewLiquidateContext(Position memory p) internal view returns(LiquidateContext memory ctx) {
+        ctx.pos = p;
+        ctx.priceFeed = IPriceFeed(pricefeed);
+
+        VaultParams storage vpRef = vaultParams[ctx.pos.vault];
+        (ctx.maxTimesLeverage, ctx.minCollateralPct)
+            = (vpRef.maxTimesLeverage, vpRef.minCollateralPct);
     }
 
     function _getLiquidateContext(uint256 _id) internal view returns(LiquidateContext memory ctx) {
