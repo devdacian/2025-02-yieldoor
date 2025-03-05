@@ -609,18 +609,16 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
     }
 
     /// @notice Gets the tokenIn in a exactOutput swap path
-    function _getTokenIn(bytes memory path) internal pure returns (address) {
+    function _getTokenIn(bytes memory path) internal pure returns (address tokenIn) {
         while (path.hasMultiplePools()) {
             path.skipToken();
         }
 
-        (, address tokenIn,) = path.decodeFirstPool();
-        return tokenIn;
+        (, tokenIn,) = path.decodeFirstPool();
     }
 
     /// @notice View function to get a position
-    function getPosition(uint256 _id) external view returns (Position memory) {
-        Position memory pos = positions[_id];
-        return pos;
+    function getPosition(uint256 _id) external view returns (Position memory pos) {
+        pos = positions[_id];
     }
 }
