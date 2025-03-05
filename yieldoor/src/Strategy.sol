@@ -152,19 +152,17 @@ contract Strategy is Ownable, IStrategy {
         amount1Out = m1 + s1 + (bal1 * shares / totalSupply);
     }
 
-    /// @notice Collects all outstanding position fees
-    /// @notice In case there's ongoing vested position, collects the already vested part of it.
-    function collectFees() public {
+    /// @notice internal function to save reading ticks multiple times from storage
+    function _collectFees(int24 mainTickLower, int24 mainTickUpper, uint128 mainLiquidity,
+                          int24 secTickLower , int24 secTickUpper,  uint128 secLiquidity) internal {
         (uint256 preBal0, uint256 preBal1) = idleBalances();
 
-        if (mainPosition.liquidity != 0) collectPositionFees(mainPosition.tickLower, mainPosition.tickUpper);
-        if (secondaryPosition.liquidity != 0) {
-            collectPositionFees(secondaryPosition.tickLower, secondaryPosition.tickUpper);
-        }
+        if (mainLiquidity != 0) collectPositionFees(mainTickLower, mainTickUpper);
+        if (secLiquidity  != 0) collectPositionFees(secTickLower , secTickUpper);
 
         bool ongoingVestingPositionCache = ongoingVestingPosition;
         if (ongoingVestingPositionCache) {
-            collectPositionFees(vestPosition.tickLower, mainPosition.tickUpper);
+            collectPositionFees(vestPosition.tickLower, vestPosition.tickUpper);
         }
 
         (uint256 afterBal0, uint256 afterBal1) = idleBalances();
@@ -180,6 +178,13 @@ contract Strategy is Ownable, IStrategy {
         if (ongoingVestingPositionCache) {
             _withdrawPartOfVestingPosition(); // doing that now, otherwise we'd charge protocol fee for the vested position
         }
+    }
+
+    /// @notice Collects all outstanding position fees
+    /// @notice In case there's ongoing vested position, collects the already vested part of it.
+    function collectFees() public {
+        _collectFees(mainPosition.tickLower, mainPosition.tickUpper, mainPosition.liquidity,
+                     secondaryPosition.tickLower, secondaryPosition.tickUpper, secondaryPosition.liquidity);
     }
 
     /// @notice Collects the accumulated fees for a certain position
@@ -201,9 +206,27 @@ contract Strategy is Ownable, IStrategy {
         require(block.timestamp - lastRebalance >= rebalanceInterval, "too soon since last rebalance");
 
         _requirePriceWithinRange(); // we verify that the pool's price is currently not manipulated
-        collectFees();
 
-        _removeLiquidity();
+        {
+            // cache current main & secondary position fields
+            (int24 mainTickLower, int24 mainTickUpper, uint128 mainLiquidity)
+                = (mainPosition.tickLower, mainPosition.tickUpper, mainPosition.liquidity);
+            (int24 secTickLower , int24 secTickUpper,  uint128 secLiquidity)
+                = (secondaryPosition.tickLower, secondaryPosition.tickUpper, secondaryPosition.liquidity);
+
+            // pass cached fields to collect fees
+            _collectFees(mainTickLower, mainTickUpper, mainLiquidity,
+                         secTickLower , secTickUpper,  secLiquidity);
+
+            // remove all liquidity from both the Main Position and the Secondary position
+            _removeFromPosition(mainLiquidity, mainTickLower, mainTickUpper);
+            _removeFromPosition(secLiquidity, secTickLower, secTickUpper);
+            mainPosition.liquidity = 0;
+            secondaryPosition.liquidity = 0;
+
+            // cached ticks & liquidity no longer valid past this point
+        }
+    
         (uint256 amount0, uint256 amount1) = idleBalances();
 
         (uint160 sqrtPriceX96, int24 tick,,,,,) = IUniswapV3Pool(pool).slot0();
@@ -400,15 +423,6 @@ contract Strategy is Ownable, IStrategy {
         secondaryPosition.tickUpper = newTickUpper;
 
         emit NewSecondaryTicks(newTickLower, newTickUpper);
-    }
-
-    /// @notice Removes all liquidity from both the Main Position and the Secondary position
-    function _removeLiquidity() internal {
-        _removeFromPosition(mainPosition.liquidity, mainPosition.tickLower, mainPosition.tickUpper);
-        _removeFromPosition(secondaryPosition.liquidity, secondaryPosition.tickLower, secondaryPosition.tickUpper);
-
-        mainPosition.liquidity = 0;
-        secondaryPosition.liquidity = 0;
     }
 
     /// @notice Changes the Main position's width and triggers a rebalance
