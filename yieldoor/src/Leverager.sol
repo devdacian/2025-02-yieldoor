@@ -136,6 +136,7 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
             ILendingPool(lendingPool).borrow(lp.denomination, lp.maxBorrowAmount);
 
             IMainnetRouter.ExactOutputParams memory swapParams;
+            address swapRouterCache;
 
             // Only important thing to verify here is that the tokenIn is NOT a vault share token.
             // Otherwise, attacker could utilize this to swap out all of the share tokens out of here.
@@ -147,22 +148,25 @@ contract Leverager is ReentrancyGuard, Ownable, ERC721, ILeverager {
                 address tokenIn = _getTokenIn(swapParams.path);
                 require(tokenIn == lp.denomination, "token should be denomination");
 
-                IERC20(tokenIn).forceApprove(swapRouter, swapParams.amountInMaximum);
+                swapRouterCache = swapRouter;
+                IERC20(tokenIn).forceApprove(swapRouterCache, swapParams.amountInMaximum);
 
                 swapParams.amountOut = a0 - lp.amount0In;
-                IMainnetRouter(swapRouter).exactOutput(swapParams);
-                IERC20(tokenIn).forceApprove(swapRouter, 0);
+                IMainnetRouter(swapRouterCache).exactOutput(swapParams);
+                IERC20(tokenIn).forceApprove(swapRouterCache, 0);
             }
 
             if (a1 > lp.amount1In && up.token1 != lp.denomination) {
                 swapParams = abi.decode(lp.swapParams2, (IMainnetRouter.ExactOutputParams));
                 address tokenIn = _getTokenIn(swapParams.path);
                 require(tokenIn == lp.denomination, "token should be denomination 2 ");
-                IERC20(tokenIn).forceApprove(swapRouter, swapParams.amountInMaximum);
+
+                if(swapRouterCache == address(0)) swapRouterCache = swapRouter;
+                IERC20(tokenIn).forceApprove(swapRouterCache, swapParams.amountInMaximum);
 
                 swapParams.amountOut = a1 - lp.amount1In;
-                IMainnetRouter(swapRouter).exactOutput(swapParams);
-                IERC20(tokenIn).forceApprove(swapRouter, 0);
+                IMainnetRouter(swapRouterCache).exactOutput(swapParams);
+                IERC20(tokenIn).forceApprove(swapRouterCache, 0);
             }
         }
 
