@@ -17,7 +17,7 @@ contract yToken is ReentrancyGuard, ERC20 {
     address public immutable lendingPool;
     address public immutable underlyingAsset;
 
-    uint8 private _decimals;
+    uint8 private immutable _decimals;
 
     modifier onlyLendingPool() {
         require(msg.sender == lendingPool, "unauthorized");
