@@ -299,8 +299,10 @@ contract Strategy is Ownable, IStrategy {
         int24 _twapTick = twapTick();
         (, int24 currentTick,,,,,) = IUniswapV3Pool(pool).slot0();
 
-        int24 minTick = _twapTick - tickTwapDeviation;
-        int24 maxTick = _twapTick + tickTwapDeviation;
+        int24 tickTwapDeviationCache = tickTwapDeviation;
+
+        int24 minTick = _twapTick - tickTwapDeviationCache;
+        int24 maxTick = _twapTick + tickTwapDeviationCache;
         if (currentTick < minTick || currentTick > maxTick) return false;
         return checkPoolActivity();
     }
